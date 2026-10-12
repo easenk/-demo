@@ -1,0 +1,114 @@
+# 本文件以 HD-2D场景搭建 工程的 .gitignore 为底本改写
+# 底本来源：https://github.com/github/gitignore/blob/main/Unity.gitignore
+
+# === 自走棋个人demo 专用规则（在底本上新增的部分）===
+
+# 素材总库（在 Assets 内，编辑器可见；.gitignore 整体忽略=不入库；只有"已使用"的素材才搬进 Assets/Res 入库）
+/[Aa]ssets/美术资源/
+/[Aa]ssets/美术资源.meta
+/[Aa]ssets/音频资源/
+/[Aa]ssets/音频资源.meta
+
+# FMOD 插件按其设置自动同步出的 bank 副本（正本在素材总库；正规管线阶段4 走 Res/Audio/Banks）
+/[Aa]ssets/FMODBanks/
+/[Aa]ssets/FMODBanks.meta
+
+# HybridCLR 安装目录下的构建产物（HotUpdate.dll 等，编译即重新生成）
+/HybridCLRData/Builds/
+
+# YooAsset 构建产物目录（打包输出，构建即重新生成）
+/Bundles/
+
+# 开发过程验证截图/录屏
+/screenshots/
+
+# === Codely CLI 本地数据（AI 助手会话记录/下载缓存/项目记忆，非工程源文件） ===
+.codely/
+.codely-cli/
+.codely.packages/
+.codelyignore
+CODELY.md
+
+# === 以下为 Unity 官方标准模板 ===
+.utmp/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+*.log
+
+# Blender 备份文件不需要入库
+*.blend1
+*.blend1.meta
+
+# MemoryCaptures 体积大且可能含敏感数据
+/[Mm]emoryCaptures/
+
+# 录屏文件体积大
+/[Rr]ecordings/
+
+# Rider 自动生成的插件目录
+/[Aa]ssets/Plugins/Editor/JetBrains*
+*.DotSettings.user
+
+# Visual Studio 缓存目录
+.vs/
+
+# Gradle 缓存
+.gradle/
+
+# 自动生成的 IDE 工程文件（每次打开工程都会重新生成，入库必冲突）
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity 崩溃报告
+sysinfo.txt
+
+# Mono 自动生成的崩溃记录
+mono_crash.*
+
+# 构建产物
+*.apk
+*.aab
+*.unitypackage
+*.unitypackage.meta
+*.app
+
+# Crashlytics 生成的文件
+crashlytics-build.properties
+
+# TestRunner 自动生成的场景
+InitTestScene*.unity*
+
+# Visual Scripting 自动生成的缓存
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db.meta
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers.meta
+
+# 编辑器测试模式自动生成的场景
+/[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# UI Toolkit 自动生成的文件
+/UIElementsSchema/
+
+# Assets 内自动生成的场景依赖缓存
+/[Aa]ssets/[Ss]ceneDependencyCache*

@@ -1,0 +1,17 @@
+{
+    "name": "AutoChess.Presentation",
+    "rootNamespace": "AutoChess.Presentation",
+    "references": [
+        "AutoChess.Game",
+        "AutoChess.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

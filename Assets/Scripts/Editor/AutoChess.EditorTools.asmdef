@@ -1,0 +1,19 @@
+{
+    "name": "AutoChess.EditorTools",
+    "rootNamespace": "AutoChess.EditorTools",
+    "references": [
+        "AutoChess.Game",
+        "AutoChess.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
