@@ -840,7 +840,8 @@ PlayerSettings:
   scriptingDefineSymbols: {}
   additionalCompilerArguments: {}
   platformArchitecture: {}
-  scriptingBackend: {}
+  scriptingBackend:
+    Standalone: 1
   il2cppCompilerConfiguration: {}
   il2cppCodeGeneration: {}
   managedStrippingLevel:
@@ -966,7 +967,7 @@ PlayerSettings:
   OpenHarmonyProfile: 
   OpenHarmonyCertificate: 
   OpenHarmonyUseCustomKeystore: 0
-  apiCompatibilityLevel: 6
+  apiCompatibilityLevel: 3
   weixinMiniGameMemorySize: 32
   weixinMiniGameExceptionSupport: 1
   weixinMiniGameExceptionOnlyEnableForUserCodes: 0

@@ -13,8 +13,7 @@
 /[Aa]ssets/FMODBanks/
 /[Aa]ssets/FMODBanks.meta
 
-# HybridCLR 安装目录下的构建产物（HotUpdate.dll 等，编译即重新生成）
-/HybridCLRData/Builds/
+# HybridCLR 9.x 的数据目录（LocalIl2CppData/HotUpdateDlls等）在 Library/HybridCLR 下，已被 Library 规则覆盖
 
 # YooAsset 构建产物目录（打包输出，构建即重新生成）
 /Bundles/
