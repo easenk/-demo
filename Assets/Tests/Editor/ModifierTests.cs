@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using AutoChess.Game;
@@ -7,13 +7,13 @@ using NUnit.Framework;
 namespace AutoChess.Tests
 {
     /// <summary>
-    /// Åú´Î3£ºĞŞÊÎÆ÷½á¹¹ĞÔÆõÔ¼¡£
-    /// ÕË±¾Óë½áËãÀà²âÊÔ£¨Flat/Percent µş¼Ó¡¢Á½¼ş+50%=¡Á2¡¢Ê®Î¬È«ÉúĞ§¡¢Ç¯ÖÆ¡¢
-    /// °´À´Ô´ÅúÁ¿Çå³ı¡¢ÕË±¾¶Ô³Æ£©µÈÅú´Î4 µÄ Unit ¾ÍÎ»ºó²¹Èë±¾ÎÄ¼ş¡£
+    /// ä¿®é¥°å™¨å¥‘çº¦ï¼šç»“æ„ï¼ˆæ‰¹æ¬¡3 çš„ 4 æ¡ï¼‰+ è´¦æœ¬/EffectiveStats ç»“ç®—ï¼ˆæ‰¹æ¬¡4 è¡¥å…¥ 8 æ¡ï¼‰ã€‚
     /// </summary>
     [TestFixture]
     public class ModifierTests
     {
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ æ‰¹æ¬¡3ï¼šç»“æ„ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
         [Test]
         public void StatKind_And_UnitStats_AreOneToOne()
         {
@@ -23,12 +23,12 @@ namespace AutoChess.Tests
             foreach (var f in typeof(UnitStats).GetFields(BindingFlags.Public | BindingFlags.Instance))
                 fields.Add(f.Name);
 
-            // ÊıÁ¿ÏàµÈ + kind ²àÈ«²¿ÃüÖĞ ¡ú Ë«ÏòÒ»Ò»¶ÔÓ¦£¨µ±Ç°ÎªÊ®¶ÔÊ®£©
+            // æ•°é‡ç›¸ç­‰ + kind ä¾§å…¨éƒ¨å‘½ä¸­ â†’ åŒå‘ä¸€ä¸€å¯¹åº”ï¼ˆå½“å‰ä¸ºåå¯¹åï¼‰
             Assert.AreEqual(fields.Count, kinds.Count,
-                $"StatKind {kinds.Count} Ïî vs UnitStats {fields.Count} Î¬¡ª¡ªÁ½²à±ØĞëÍ¬²½Ôö¼õ");
+                $"StatKind {kinds.Count} é¡¹ vs UnitStats {fields.Count} ç»´â€”â€”ä¸¤ä¾§å¿…é¡»åŒæ­¥å¢å‡");
             foreach (var name in kinds)
                 Assert.IsTrue(fields.Contains(name),
-                    $"StatKind.{name} ÔÚ UnitStats ÀïÃ»ÓĞÍ¬ÃûÎ¬¶È£º¹ÒÁËĞŞÊÎÆ÷Ò²»á¾²Ä¬Ê§Ğ§£¬ÕâÊÇ×î¹óµÄ bug");
+                    $"StatKind.{name} åœ¨ UnitStats é‡Œæ²¡æœ‰åŒåç»´åº¦ï¼šæŒ‚äº†ä¿®é¥°å™¨ä¹Ÿä¼šé™é»˜å¤±æ•ˆï¼Œè¿™æ˜¯æœ€è´µçš„ bug");
         }
 
         [Test]
@@ -38,13 +38,13 @@ namespace AutoChess.Tests
             Assert.AreEqual(StatKind.Armor, m.Kind);
             Assert.AreEqual(StatOp.Flat, m.Op);
             Assert.AreEqual(30f, m.Value);
-            Assert.AreEqual(ModSourceId.None, m.SourceId); // ²»ÌîÀ´Ô´Ä¬ÈÏ 0
+            Assert.AreEqual(ModSourceId.None, m.SourceId); // ä¸å¡«æ¥æºé»˜è®¤ 0
         }
 
         [Test]
         public void StatModifier_ValueEquality_RemovesFirstMatch()
         {
-            // ÕË±¾¶Ô³ÆµÄÇ°ÉÚ£ºÍ¬ËÄÁªµ¥ÊÓÎªµÈ¼Û ¡ú List.Remove °´ÖµÉ¾µÚÒ»ÌõÒÀÀµÕâÒ»µã
+            // è´¦æœ¬å¯¹ç§°çš„å‰å“¨ï¼šåŒå››è”å•è§†ä¸ºç­‰ä»· â†’ List.Remove æŒ‰å€¼åˆ ç¬¬ä¸€æ¡ä¾èµ–è¿™ä¸€ç‚¹
             var a = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 1000);
             var b = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 1000);
             var c = new StatModifier(StatKind.AttackPower, StatOp.Percent, 51f, 1000);
@@ -53,18 +53,128 @@ namespace AutoChess.Tests
             Assert.IsFalse(a.Equals(c));
 
             var ledger = new List<StatModifier> { a, b };
-            Assert.IsTrue(ledger.Remove(b)); // b Óë a µÈ¼Û ¡ú ±»É¾µôµÄÆäÊµÊÇµÚÒ»Ìõ a
+            Assert.IsTrue(ledger.Remove(b)); // b ä¸ a ç­‰ä»· â†’ è¢«åˆ æ‰çš„å…¶å®æ˜¯ç¬¬ä¸€æ¡ a
             Assert.AreEqual(1, ledger.Count);
         }
 
         [Test]
         public void ModSourceId_Bands_DoNotOverlap()
         {
-            // ºÅ¶Î·À×²³µ£ºÏàÁÚ¶Î±ØĞë²»ÖØµş£¬0 = ÎŞÀ´Ô´²»Õ¼ÈÎºÎ¶Î
+            // å·æ®µé˜²æ’è½¦ï¼šç›¸é‚»æ®µå¿…é¡»ä¸é‡å ï¼Œ0 = æ— æ¥æºä¸å ä»»ä½•æ®µ
             Assert.Less(ModSourceId.SystemMax, ModSourceId.EquipmentBase);
             Assert.Less(ModSourceId.EquipmentMax, ModSourceId.TreasureBase);
             Assert.Less(ModSourceId.TreasureMax, ModSourceId.TestBase);
             Assert.AreEqual(0, ModSourceId.None);
+        }
+
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ æ‰¹æ¬¡4ï¼šè´¦æœ¬ä¸ EffectiveStats ç»“ç®— â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private static Unit NewUnit()
+        {
+            return new Unit(1, 1, true, DefFactory.SampleStats, new EventBus());
+        }
+
+        [Test]
+        public void EffectiveStats_NoModifiers_EqualsBase()
+        {
+            var unit = NewUnit();
+            Assert.AreEqual(unit.Stats, unit.EffectiveStats); // é›¶ä¿®é¥°å™¨ï¼šè¯»å‡ºæ¥å°±æ˜¯å‡ºå‚é¢æ¿
+        }
+
+        [Test]
+        public void EffectiveStats_FlatAndPercent_Formula()
+        {
+            var unit = NewUnit();
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 30f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Percent, 50f, 3000));
+
+            // (50 + 30) Ã— (1 + 0.5) = 120
+            Assert.AreEqual(120, unit.EffectiveStats.MaxHp);
+        }
+
+        [Test]
+        public void EffectiveStats_PercentSums_DoesNotStackMultiply()
+        {
+            var unit = NewUnit();
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 3000));
+
+            // 14 Ã— (1 + 0.5 + 0.5) = 28ï¼Œä¸æ˜¯ 14Ã—1.5Ã—1.5=31.5ï¼ˆå¯é¢„æœŸæ€§ä¼˜å…ˆï¼‰
+            Assert.AreEqual(28, unit.EffectiveStats.AttackPower);
+        }
+
+        [Test]
+        public void EffectiveStats_AllTenKinds_TakeEffectWithClamps()
+        {
+            var unit = NewUnit();
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 10f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 6f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, -500f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MagicResist, StatOp.Flat, 70f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, -999f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackRange, StatOp.Flat, 2f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, 0.3f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -0.25f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.CritChance, StatOp.Flat, 200f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.CritDamage, StatOp.Flat, -10f, 3000));
+
+            var s = unit.EffectiveStats;
+            Assert.AreEqual(60, s.MaxHp);
+            Assert.AreEqual(20, s.AttackPower);
+            Assert.AreEqual(-470, s.Armor);          // æŠ—æ€§ä¸é’³ä¸‹é™ï¼šåˆæ³•è´Ÿå€¼ï¼ˆå‡»ç¢/å‰ŠæŠ—èµ°è¿™æ¡è·¯ï¼‰
+            Assert.AreEqual(100, s.MagicResist);
+            Assert.AreEqual(0, s.AbilityPower);      // æ³•å¼º â‰¥ 0
+            Assert.AreEqual(3, s.AttackRange);
+            Assert.AreEqual(1.3f, s.AttackInterval, 0.0001f);
+            Assert.AreEqual(0.75f, s.MoveInterval, 0.0001f);
+            Assert.AreEqual(100, s.CritChance);     // æš´å‡»ç‡ âˆˆ [0,100]ï¼š205 â†’ 100
+            Assert.AreEqual(40, s.CritDamage);
+        }
+
+        [Test]
+        public void EffectiveStats_IntervalsFlooredAtPointOne()
+        {
+            var unit = NewUnit();
+            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, -5f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -5f, 3000));
+
+            // é—´éš”æ˜¯ CombatSystem çš„é™¤æ•°ï¼š1.0âˆ’5 = âˆ’4 â†’ é’³ 0.1ï¼Œæ°¸ä¸ä¸º 0
+            Assert.AreEqual(0.1f, unit.EffectiveStats.AttackInterval);
+            Assert.AreEqual(0.1f, unit.EffectiveStats.MoveInterval);
+        }
+
+        [Test]
+        public void EffectiveStats_IsRecomputedLive_NotCached()
+        {
+            var unit = NewUnit();
+            var m = new StatModifier(StatKind.AttackPower, StatOp.Flat, 100f, 3000);
+
+            unit.AddModifier(m);
+            Assert.AreEqual(114, unit.EffectiveStats.AttackPower);
+
+            unit.RemoveModifier(m);
+            Assert.AreEqual(14, unit.EffectiveStats.AttackPower); // æ‘˜äº†ç«‹åˆ»ç”Ÿæ•ˆï¼šç°ç®—ä¸ç¼“å­˜
+        }
+
+        [Test]
+        public void RemoveModifiersBySource_BulkClearsAndCounts()
+        {
+            var unit = NewUnit();
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 20f, 1000));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 5f, 1000));
+            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, 10f, 1000));
+            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, 50f, 2000));
+
+            Assert.AreEqual(3, unit.RemoveModifiersBySource(1000)); // æ•´æ‰¹å¸è½½è£…å¤‡æ®µ
+
+            var s = unit.EffectiveStats;
+            Assert.AreEqual(50, s.MaxHp);        // å›åˆ°å‡ºå‚
+            Assert.AreEqual(14, s.AttackPower);
+            Assert.AreEqual(30, s.Armor);
+            Assert.AreEqual(150, s.AbilityPower); // å®ç‰©æ®µçš„å®‰ç„¶æ— æ™ï¼ˆå·æ®µé˜²æ’è½¦çš„æ„ä¹‰ï¼‰
+
+            Assert.AreEqual(0, unit.RemoveModifiersBySource(1000)); // å†å¸ = 0 æ¡
+            Assert.Throws<ArgumentException>(() => unit.RemoveModifiersBySource(0)); // 0 ä¸æ˜¯æ¥æº
         }
     }
 }
