@@ -7,7 +7,8 @@ using NUnit.Framework;
 namespace AutoChess.Tests
 {
     /// <summary>
-    /// 修饰器契约：结构（批次3 的 4 条）+ 账本/EffectiveStats 结算（批次4 补入 8 条）。
+    /// 修饰器契约：结构（批次3 的 4 条）+ 账本/EffectiveStats 结算（批次4 补入 8 条）
+    /// + 号段定稿（批次5.5：测试 SourceId 一律引用 ModSourceId 常量，禁止裸数字）。
     /// </summary>
     [TestFixture]
     public class ModifierTests
@@ -23,7 +24,7 @@ namespace AutoChess.Tests
             foreach (var f in typeof(UnitStats).GetFields(BindingFlags.Public | BindingFlags.Instance))
                 fields.Add(f.Name);
 
-            // 数量相等 + kind 侧全部命中 → 双向一一对应（当前为十对十）
+            // 数量相等 + kind 侧全部命中 → 双向一一对应（当前为十三对十三）
             Assert.AreEqual(fields.Count, kinds.Count,
                 $"StatKind {kinds.Count} 项 vs UnitStats {fields.Count} 维——两侧必须同步增减");
             foreach (var name in kinds)
@@ -45,9 +46,9 @@ namespace AutoChess.Tests
         public void StatModifier_ValueEquality_RemovesFirstMatch()
         {
             // 账本对称的前哨：同四联单视为等价 → List.Remove 按值删第一条依赖这一点
-            var a = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 1000);
-            var b = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 1000);
-            var c = new StatModifier(StatKind.AttackPower, StatOp.Percent, 51f, 1000);
+            var a = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, ModSourceId.EquipmentBase);
+            var b = new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, ModSourceId.EquipmentBase);
+            var c = new StatModifier(StatKind.AttackPower, StatOp.Percent, 51f, ModSourceId.EquipmentBase);
 
             Assert.IsTrue(a.Equals(b));
             Assert.IsFalse(a.Equals(c));
@@ -60,10 +61,11 @@ namespace AutoChess.Tests
         [Test]
         public void ModSourceId_Bands_DoNotOverlap()
         {
-            // 号段防撞车：相邻段必须不重叠，0 = 无来源不占任何段
+            // 号段防撞车（2026-10-16 随决策#17/#18 定稿）：相邻段必须不重叠，0 = 无来源不占任何段
             Assert.Less(ModSourceId.SystemMax, ModSourceId.EquipmentBase);
-            Assert.Less(ModSourceId.EquipmentMax, ModSourceId.TreasureBase);
-            Assert.Less(ModSourceId.TreasureMax, ModSourceId.TestBase);
+            Assert.Less(ModSourceId.EquipmentMax, ModSourceId.StrategyBase);
+            Assert.Less(ModSourceId.StrategyMax, ModSourceId.OreRewardBase);
+            Assert.Less(ModSourceId.OreRewardMax, ModSourceId.TestBase);
             Assert.AreEqual(0, ModSourceId.None);
         }
 
@@ -85,8 +87,8 @@ namespace AutoChess.Tests
         public void EffectiveStats_FlatAndPercent_Formula()
         {
             var unit = NewUnit();
-            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 30f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Percent, 50f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 30f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Percent, 50f, ModSourceId.TestBase));
 
             // (50 + 30) × (1 + 0.5) = 120
             Assert.AreEqual(120, unit.EffectiveStats.MaxHp);
@@ -96,27 +98,30 @@ namespace AutoChess.Tests
         public void EffectiveStats_PercentSums_DoesNotStackMultiply()
         {
             var unit = NewUnit();
-            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Percent, 50f, ModSourceId.TestBase));
 
             // 14 × (1 + 0.5 + 0.5) = 28，不是 14×1.5×1.5=31.5（可预期性优先）
             Assert.AreEqual(28, unit.EffectiveStats.AttackPower);
         }
 
         [Test]
-        public void EffectiveStats_AllTenKinds_TakeEffectWithClamps()
+        public void EffectiveStats_AllThirteenKinds_TakeEffectWithClamps()
         {
             var unit = NewUnit();
-            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 10f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 6f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, -500f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.MagicResist, StatOp.Flat, 70f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, -999f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.AttackRange, StatOp.Flat, 2f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, 0.3f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -0.25f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.CritChance, StatOp.Flat, 200f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.CritDamage, StatOp.Flat, -10f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 10f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 6f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, -500f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.MagicResist, StatOp.Flat, 70f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, -999f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.AttackRange, StatOp.Flat, 2f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, 0.3f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -0.25f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.CritChance, StatOp.Flat, 200f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.CritDamage, StatOp.Flat, -10f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.MaxMana, StatOp.Flat, 25f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.ManaPerHit, StatOp.Flat, -10f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.ManaRegenPerSecond, StatOp.Flat, 5f, ModSourceId.TestBase));
 
             var s = unit.EffectiveStats;
             Assert.AreEqual(60, s.MaxHp);
@@ -129,14 +134,17 @@ namespace AutoChess.Tests
             Assert.AreEqual(0.75f, s.MoveInterval, 0.0001f);
             Assert.AreEqual(100, s.CritChance);     // 暴击率 ∈ [0,100]：205 → 100
             Assert.AreEqual(40, s.CritDamage);
+            Assert.AreEqual(25, s.MaxMana);          // 0 + 25：蓝条 ≥ 0（批次5.5 扩容三维）
+            Assert.AreEqual(0, s.ManaPerHit);       // 0 − 10 → 钳 0
+            Assert.AreEqual(5, s.ManaRegenPerSecond);
         }
 
         [Test]
         public void EffectiveStats_IntervalsFlooredAtPointOne()
         {
             var unit = NewUnit();
-            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, -5f, 3000));
-            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -5f, 3000));
+            unit.AddModifier(new StatModifier(StatKind.AttackInterval, StatOp.Flat, -5f, ModSourceId.TestBase));
+            unit.AddModifier(new StatModifier(StatKind.MoveInterval, StatOp.Flat, -5f, ModSourceId.TestBase));
 
             // 间隔是 CombatSystem 的除数：1.0−5 = −4 → 钳 0.1，永不为 0
             Assert.AreEqual(0.1f, unit.EffectiveStats.AttackInterval);
@@ -147,7 +155,7 @@ namespace AutoChess.Tests
         public void EffectiveStats_IsRecomputedLive_NotCached()
         {
             var unit = NewUnit();
-            var m = new StatModifier(StatKind.AttackPower, StatOp.Flat, 100f, 3000);
+            var m = new StatModifier(StatKind.AttackPower, StatOp.Flat, 100f, ModSourceId.TestBase);
 
             unit.AddModifier(m);
             Assert.AreEqual(114, unit.EffectiveStats.AttackPower);
@@ -160,21 +168,21 @@ namespace AutoChess.Tests
         public void RemoveModifiersBySource_BulkClearsAndCounts()
         {
             var unit = NewUnit();
-            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 20f, 1000));
-            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 5f, 1000));
-            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, 10f, 1000));
-            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, 50f, 2000));
+            unit.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 20f, ModSourceId.EquipmentBase));
+            unit.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 5f, ModSourceId.EquipmentBase));
+            unit.AddModifier(new StatModifier(StatKind.Armor, StatOp.Flat, 10f, ModSourceId.EquipmentBase));
+            unit.AddModifier(new StatModifier(StatKind.AbilityPower, StatOp.Flat, 50f, ModSourceId.StrategyBase));
 
-            Assert.AreEqual(3, unit.RemoveModifiersBySource(1000)); // 整批卸载装备段
+            Assert.AreEqual(3, unit.RemoveModifiersBySource(ModSourceId.EquipmentBase)); // 整批卸载装备段
 
             var s = unit.EffectiveStats;
             Assert.AreEqual(50, s.MaxHp);        // 回到出厂
             Assert.AreEqual(14, s.AttackPower);
             Assert.AreEqual(30, s.Armor);
-            Assert.AreEqual(150, s.AbilityPower); // 宝物段的安然无恙（号段防撞车的意义）
+            Assert.AreEqual(150, s.AbilityPower); // 策略段的安然无恙（号段防撞车的意义）
 
-            Assert.AreEqual(0, unit.RemoveModifiersBySource(1000)); // 再卸 = 0 条
-            Assert.Throws<ArgumentException>(() => unit.RemoveModifiersBySource(0)); // 0 不是来源
+            Assert.AreEqual(0, unit.RemoveModifiersBySource(ModSourceId.EquipmentBase)); // 再卸 = 0 条
+            Assert.Throws<ArgumentException>(() => unit.RemoveModifiersBySource(ModSourceId.None)); // 0 不是来源
         }
     }
 }

@@ -67,6 +67,10 @@ namespace AutoChess.Game
             ActRoster(_playerRoster);
             ActRoster(_enemyRoster);
 
+            // 4.5 每 tick 回蓝记账（批次5.5；术士被动——阶段2 钩子骨架"每 tick 结束"的预留位，
+            //     将来这里是钩子实现之一：外壳换、记账逻辑不白写）
+            TickManaRegen();
+
             // 5. 胜负结算（查棋盘）
             ResolveOutcome();
         }
@@ -110,6 +114,24 @@ namespace AutoChess.Game
             }
         }
 
+        /// <summary>每 tick 给存活单位按面板回蓝（无蓝条/0回蓝的单位在 AddMana 内静默）。</summary>
+        private void TickManaRegen()
+        {
+            TickRegenFor(_playerRoster);
+            TickRegenFor(_enemyRoster);
+        }
+
+        private void TickRegenFor(List<Unit> roster)
+        {
+            for (int i = 0; i < roster.Count; i++)
+            {
+                Unit u = roster[i];
+                if (!u.IsAlive || !u.IsOnBoard) continue;
+                // 决策⑦：蓝量 int，每 tick = RoundToInt(每秒回蓝 × 0.5)；术士 2/秒 → 1/tick 恰好整数
+                u.AddMana(GameMath.RoundToInt(u.EffectiveStats.ManaRegenPerSecond * GameConst.TickSeconds));
+            }
+        }
+
         private Unit GetLockedTarget(Unit u)
         {
             return _lockedTarget.TryGetValue(u, out var t) ? t : null;
@@ -148,6 +170,10 @@ namespace AutoChess.Game
             _bus.Publish(new UnitAttackedEvent(attacker.Id, target.Id, isCrit));
 
             int applied = attacker.Attack(target, isCrit);
+
+            // 普攻命中回蓝（批次5.5，职业口径；无蓝条/0回蓝在 AddMana 内静默）
+            // 记账顺序锁定：伤害落地 → 命中回蓝 → 吸血回血
+            attacker.AddMana(attacker.EffectiveStats.ManaPerHit);
 
             // 吸血：对"实际造成的伤害"按规则百分比回复（仅玩家侧享受）
             if (_rules.PlayerLifestealPercent > 0f && attacker.IsPlayerSide && attacker.IsAlive)

@@ -156,7 +156,7 @@ namespace AutoChess.Tests
             UnitMaxHpChangedEvent last = default;
             _bus.Subscribe<UnitMaxHpChangedEvent>(e => last = e);
 
-            u.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 50f, 3000));
+            u.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 50f, ModSourceId.TestBase));
             Assert.AreEqual(100, u.EffectiveStats.MaxHp);
             Assert.AreEqual(80, u.CurrentHp);   // 30 + 50：等量增加
             Assert.AreEqual(u.Id, last.UnitId);
@@ -170,14 +170,14 @@ namespace AutoChess.Tests
             // 用例A：血 45、上限砍到 5 → 钳进 5（不是 45−45=0→1）
             var a = NewUnit();
             a.TakeDamage(5, null); // hp 45/50
-            a.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, -45f, 3000));
+            a.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, -45f, ModSourceId.TestBase));
             Assert.AreEqual(5, a.EffectiveStats.MaxHp);
             Assert.AreEqual(5, a.CurrentHp);
 
             // 用例B：血 3、上限砍到 2 → 血 3>2 钳到 2；血 ≤ 新上限的原样保留
             var b = NewUnit();
             b.TakeDamage(47, null); // hp 3/50
-            b.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, -48f, 3000));
+            b.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, -48f, ModSourceId.TestBase));
             Assert.AreEqual(2, b.EffectiveStats.MaxHp);
             Assert.AreEqual(2, b.CurrentHp);
             Assert.AreEqual(2, _events.MaxHpChanged);
@@ -192,7 +192,7 @@ namespace AutoChess.Tests
             UnitMaxHpChangedEvent last = default;
             _bus.Subscribe<UnitMaxHpChangedEvent>(e => last = e);
 
-            u.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 100f, 3000));
+            u.AddModifier(new StatModifier(StatKind.MaxHp, StatOp.Flat, 100f, ModSourceId.TestBase));
             Assert.AreEqual(150, u.EffectiveStats.MaxHp); // 上限真的变了
             Assert.AreEqual(0, u.CurrentHp);              // 但修饰器不复活
             Assert.AreEqual(150, last.MaxHp);
@@ -203,7 +203,7 @@ namespace AutoChess.Tests
         public void MaxHp_Unchanged_NoEvent()
         {
             var u = NewUnit();
-            u.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 10f, 3000));
+            u.AddModifier(new StatModifier(StatKind.AttackPower, StatOp.Flat, 10f, ModSourceId.TestBase));
             Assert.AreEqual(24, u.EffectiveStats.AttackPower);
             Assert.AreEqual(0, _events.MaxHpChanged); // MaxHp 没动就不许广播
         }
@@ -212,7 +212,7 @@ namespace AutoChess.Tests
         public void Ledger_IsSymmetric_AddRemove()
         {
             var u = NewUnit();
-            var m = new StatModifier(StatKind.Armor, StatOp.Flat, 5f, 3000);
+            var m = new StatModifier(StatKind.Armor, StatOp.Flat, 5f, ModSourceId.TestBase);
 
             u.AddModifier(m);
             Assert.AreEqual(35, u.EffectiveStats.Armor);

@@ -1,7 +1,7 @@
 namespace AutoChess.Game
 {
     // ─────────────────────────────────────────────────────
-    // 阶段1 战斗事件（共 10 条）。纪律（设计文档 2.6）：
+    // 阶段1 战斗事件 + 蓝条事件（批次5.5 扩容后共 11 条）。纪律（设计文档 2.6）：
     //  · 全部 struct —— 广播零装箱（EventBus 的 where T : struct 强制）
     //  · 只带"事实快照"与 int id，不带对象引用 —— 表现层拿 id 查自己的视图表
     //  · 名字一律过去时 —— 事件是"已发生的事实"，不是命令
@@ -149,6 +149,21 @@ namespace AutoChess.Game
         {
             PlayerWon = playerWon;
             TotalTicks = totalTicks;
+        }
+    }
+
+    /// <summary>单位蓝量变化时广播（批次5.5：命中回蓝/每秒回蓝；阶段3 施法消耗也走它）。蓝条 UI 直接读。</summary>
+    public struct ManaChangedEvent
+    {
+        public int UnitId;
+        public int CurrentMana;
+        public int MaxMana;
+
+        public ManaChangedEvent(int unitId, int currentMana, int maxMana)
+        {
+            UnitId = unitId;
+            CurrentMana = currentMana;
+            MaxMana = maxMana;
         }
     }
 }

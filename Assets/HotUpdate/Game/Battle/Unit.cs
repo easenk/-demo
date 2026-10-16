@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using static PlasticGui.PlasticTableCell;
 
 namespace AutoChess.Game
 {
@@ -11,7 +10,9 @@ namespace AutoChess.Game
     /// </summary>
     public sealed class Unit
     {
-        private const int KindCount = (int)StatKind.CritDamage + 1;
+        // 蓝条扩容后=13。注意：N对N 反射测试只盯"枚举↔字段"两侧，这个常量靠注释盯——
+        // 将来新增 StatKind 时记得同步改这里，否则 EffectiveStats 草稿纸越界。
+        private const int KindCount = (int)StatKind.ManaRegenPerSecond + 1;
 
         private readonly EventBus _bus;
         private readonly UnitStats _baseStats;
@@ -34,8 +35,11 @@ namespace AutoChess.Game
         public bool IsOnBoard { get; internal set; }
 
         // ── 战斗状态：只有本类能改 ──
-        public int CurrentHp { get; private set; }
+        public int  CurrentHp { get; private set; }
         public bool IsAlive => CurrentHp > 0;
+
+        // ── 蓝条状态（批次5.5）：出生 0（起手蓝决策）；MaxMana=0 的单位连账本都不建 ──
+        public int CurrentMana { get; private set; }
 
         public Unit(int id, int charId, bool isPlayerSide, UnitStats stats, EventBus bus, int star = 1)
         {
@@ -86,6 +90,9 @@ namespace AutoChess.Game
                 s.MoveInterval = ScaledInterval(StatKind.MoveInterval, _baseStats.MoveInterval);
                 s.CritChance = GameMath.Min(100, ScaledInt(StatKind.CritChance, _baseStats.CritChance, 0)); // ∈ [0,100]
                 s.CritDamage = ScaledInt(StatKind.CritDamage, _baseStats.CritDamage, 0);
+                s.MaxMana = ScaledInt(StatKind.MaxMana, _baseStats.MaxMana, 0);            // 蓝条 ≥ 0（0 = 无蓝条单位）
+                s.ManaPerHit = ScaledInt(StatKind.ManaPerHit, _baseStats.ManaPerHit, 0);   // 回蓝 ≥ 0
+                s.ManaRegenPerSecond = ScaledInt(StatKind.ManaRegenPerSecond, _baseStats.ManaRegenPerSecond, 0);
                 return s;
             }
         }
@@ -181,11 +188,28 @@ namespace AutoChess.Game
             return applied;
         }
 
-        /// <summary>备战期满血归位（阶段2 调用）。</summary>
+        /// <summary>备战期满血归位（阶段2 调用；战斗切换时顺带清蓝——蓝是战斗内状态，不跨战斗携带）。</summary>
         public void RestoreFullHp()
         {
             CurrentHp = _maxHp;
+            CurrentMana = 0;
             _bus.Publish(new UnitRestoredEvent(Id, CurrentHp));
+        }
+
+        /// <summary>
+        /// 回蓝唯一入口（批次5.5：命中回蓝/每秒回蓝都走它；阶段3 的受击回蓝/施法消耗也归这里）。
+        /// Heal 的镜像契约：无蓝条(MaxMana=0)静默、增量 ≤0 静默、已满静默——只陈述真发生的事实。
+        /// </summary>
+        public void AddMana(int amount)
+        {
+            if (amount <= 0) return;              // 负/零增量：静默（面板钳制 ≥0 的运行时镜像）
+            int max = EffectiveStats.MaxMana;
+            if (max <= 0) return;                 // 无蓝条单位：连账本都不建
+            int room = max - CurrentMana;
+            if (room <= 0) return;               // 已满：不重复陈述
+            int applied = amount < room ? amount : room;
+            CurrentMana += applied;
+            _bus.Publish(new ManaChangedEvent(Id, CurrentMana, max));
         }
 
         // ── 内部 ──
