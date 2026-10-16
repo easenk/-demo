@@ -109,10 +109,10 @@ namespace AutoChess.Tests
 
             for (int i = 0; i < 70; i++) combat.Tick();
 
-            // 第70步盘点：命中 4 次（攻击条15步与16步两种浮点口径下第70步前都是4刀）×7 = 28，
-            // 被动回蓝在第30/60步各+1 = 2 → 合计 30（两条口径殊途同归，断言稳定）
-            Assert.AreEqual(30, warlock.CurrentMana);
-            Assert.AreEqual(6, manaEvents.Count); // 4次命中回蓝 + 2次被动回蓝
+            // 第70步盘点：命中4次（第15/30/45/60步）×7 = 28，被动回蓝4次（同tick）×1 = 4
+            // → 合计 28 + 4 = 32（命中和被动回蓝在同一步触发，步序：先攻击后回蓝）
+            Assert.AreEqual(32, warlock.CurrentMana);
+            Assert.AreEqual(8, manaEvents.Count); // 4次命中回蓝 + 4次被动回蓝
         }
 
         [Test]
