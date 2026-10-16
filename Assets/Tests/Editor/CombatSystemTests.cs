@@ -24,6 +24,11 @@ namespace AutoChess.Tests
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // 时间线换算说明（步长 1/30 秒 = 每秒30步，批次5.6）：
+    //  · 攻击/移动间隔 N 秒 = 攒 30N 步（浮点±1步抖动 → 断言用区间或"第N步前必发生"安全边际）
+    //  · 回蓝走整数点数账本（RegenMana），精确无浮点 → 回蓝断言可钉死具体步数
+    // ─────────────────────────────────────────────────────────────
     [TestFixture]
     public class CombatSystemTests
     {
@@ -75,7 +80,7 @@ namespace AutoChess.Tests
         // ─────────────── 胜负路径 ───────────────
 
         [Test]
-        public void CrushBattle_PlayerWinsInOneTick_NoRolls()
+        public void CrushBattle_PlayerWinsFast_NoRolls()
         {
             var hero = Place(true, new Pos(0, 2), Stats(maxHp: 1000, attack: 999, range: 3, atkInterval: 0.5f));
             var foe = Place(false, new Pos(0, 5), Stats(maxHp: 50, attack: 1));
@@ -87,7 +92,9 @@ namespace AutoChess.Tests
 
             Assert.IsTrue(combat.IsOver);
             Assert.IsTrue(combat.PlayerWon);
-            Assert.AreEqual(1, combat.TickCount);   // 首个 tick 充满条即出手即终局
+            // 攻击间隔0.5秒 = 攒15步（浮点±1步抖动）→ 首刀即一击终局
+            Assert.That(combat.TickCount, Is.InRange(15, 16));
+            Assert.AreEqual(1, log.Attacks.Count);
             Assert.AreEqual(0, combat.RollCount);  // 暴击率 0：一次骰都没掷
             Assert.AreEqual(1, log.Ended);
         }
@@ -105,7 +112,8 @@ namespace AutoChess.Tests
 
             Assert.IsTrue(combat.IsOver);
             Assert.IsFalse(combat.PlayerWon);       // 打不过即败
-            Assert.AreEqual(2, combat.TickCount);   // 狼第 2 tick 充满攻击条秒杀羔羊
+            // 羔羊移动条与恶狼攻击条都是1.0秒=30步，同一步攒满：羔羊先挪、恶狼后杀
+            Assert.That(combat.TickCount, Is.InRange(30, 31));
             Assert.AreEqual(1, log.Ended);
         }
 
@@ -122,7 +130,7 @@ namespace AutoChess.Tests
 
             Assert.IsTrue(combat.IsOver);
             Assert.IsFalse(combat.PlayerWon);       // 超时（双方都活着）按玩家战败
-            Assert.AreEqual(GameConst.MaxTicks, combat.TickCount);
+            Assert.AreEqual(GameConst.MaxTicks, combat.TickCount); // 4500步=150秒，随常量自适应
             Assert.AreEqual(1, _board.CountOnBoard(true));   // 两堵墙都活着打满全场
             Assert.AreEqual(1, _board.CountOnBoard(false));
             Assert.AreEqual(1, log.Ended);
@@ -131,7 +139,7 @@ namespace AutoChess.Tests
         [Test]
         public void RangedGetsFreeHits_WhileMeleeApproaches()
         {
-            // 弩手射程3/攻14；蛮兵血30/攻99/近战，从 3 格外追进来
+            // 弩手射程3/攻14/攻击间隔1秒；蛮兵血30/攻99/近战/移动间隔1秒，从 3 格外追进来
             var archer = Place(true, new Pos(0, 2), Stats(attack: 14, range: 3));
             var brute = Place(false, new Pos(0, 5), Stats(maxHp: 30, attack: 99, range: 1));
 
@@ -140,9 +148,10 @@ namespace AutoChess.Tests
             var combat = new CombatSystem(_board, _bus);
             RunToCompletion(combat);
 
-            // 追击时间线：弩手在 t2/t4/t6 三箭，蛮兵 t4 才走到跟前、t6 轮不到出手
+            // 追击时间线（每秒30步）：弩手每30步一箭（第30/60/90步±1），蛮兵每30步挪一格——
+            // 第3箭时蛮兵才追到跟前，玩家侧先行动，轮不到蛮兵出手
             Assert.IsTrue(combat.PlayerWon);
-            Assert.AreEqual(6, combat.TickCount);
+            Assert.That(combat.TickCount, Is.InRange(90, 93));
             Assert.AreEqual(3, log.Attacks.Count);
             foreach (var atk in log.Attacks)
                 Assert.AreEqual(archer.Id, atk.AttackerId, "蛮兵全程没捞到一次出手");
@@ -160,7 +169,8 @@ namespace AutoChess.Tests
             var right = Place(false, new Pos(5, 4), Stats(maxHp: 1000, atkInterval: 999f, moveInterval: 999f));
 
             var combat = new CombatSystem(_board, _bus);
-            combat.Tick();
+            // 移动间隔0.5秒=攒15步（浮点±1）→ 17步内必走
+            for (int i = 0; i < 17; i++) combat.Tick();
 
             // 并列取先扫到（行主序 → (1,4) 在 (5,4) 之前）→ 第一步朝 (1,4) 迈：(2,3)
             Assert.AreEqual(new Pos(2, 3), scout.Pos);
@@ -179,10 +189,13 @@ namespace AutoChess.Tests
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus);
 
-            combat.Tick(); // t1：锁近敌 → 一击致死
+            // 首刀最晚第16步落地（攻击间隔0.5秒=攒15步）：锁近敌 → 一击致死
+            for (int i = 0; i < 17; i++) combat.Tick();
             Assert.AreEqual(near.Id, log.Attacks[0].TargetId); // 锁的是近的
+            Assert.AreEqual(1, log.Attacks.Count);
 
-            combat.Tick(); // t2：近敌死 → 重新索敌锁远敌 → 迈向 (7,5)：(3,3)
+            // 近敌死 → 重新索敌锁远敌 → 朝 (7,5) 迈：(3,3)（移动间隔0.5秒，再攒15~16步）
+            for (int i = 0; i < 17; i++) combat.Tick();
             Assert.AreEqual(new Pos(3, 3), slayer.Pos);
             Assert.AreEqual(1, log.Attacks.Count); // 远敌够不着，从未出过手
         }
@@ -198,7 +211,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus);
-            combat.Tick(); // 一击终局
+            for (int i = 0; i < 17; i++) combat.Tick(); // 首刀最晚第16步，一击终局
 
             // 挥刀 → 掉血 → 倒地 → 让格 → 终局：表现层按这个顺序播演出
             CollectionAssert.AreEqual(
@@ -258,9 +271,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus);
-            combat.Tick();
-            combat.Tick();
-            combat.Tick();
+            for (int i = 0; i < 50; i++) combat.Tick(); // 攻击间隔0.5秒=15~16步一刀，50步稳出3刀
 
             Assert.AreEqual(3, log.Attacks.Count);
             Assert.AreEqual(0, combat.RollCount);  // 暴击率 0 ⇒ 一次都没掷
@@ -279,9 +290,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus);
-            combat.Tick();
-            combat.Tick();
-            combat.Tick();
+            for (int i = 0; i < 50; i++) combat.Tick();
 
             Assert.AreEqual(3, log.Attacks.Count);
             Assert.AreEqual(3, combat.RollCount);   // 每次出手恰掷一次
@@ -301,7 +310,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus);
-            for (int i = 0; i < 10; i++) combat.Tick();
+            for (int i = 0; i < 300; i++) combat.Tick(); // 300步=10秒（上限4500步=150秒，远未到）
 
             Assert.AreEqual(0, combat.RollCount);   // 掷骰只发生在真正出手时
             Assert.AreEqual(0, log.Attacks.Count);
@@ -321,7 +330,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus, rules: rules);
-            combat.Tick();
+            for (int i = 0; i < 17; i++) combat.Tick(); // 首刀最晚第16步
 
             // 吸血 = 实际伤害 14 × 50% = 7 → 30 + 7 = 37
             Assert.AreEqual(37, vamp.CurrentHp);
@@ -339,7 +348,7 @@ namespace AutoChess.Tests
             var log = new CombatEventLog();
             log.Attach(_bus);
             var combat = new CombatSystem(_board, _bus, rules: rules);
-            combat.Tick(); // 一击击杀 → 击杀回复 50 × 20% = 10
+            for (int i = 0; i < 17; i++) combat.Tick(); // 一击击杀 → 击杀回复 50 × 20% = 10
 
             Assert.AreEqual(40, hunter.CurrentHp);
             CollectionAssert.AreEqual(

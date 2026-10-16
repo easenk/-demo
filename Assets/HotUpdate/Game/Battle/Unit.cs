@@ -22,6 +22,7 @@ namespace AutoChess.Game
         private readonly float[] _pctScratch = new float[KindCount];
 
         private int _maxHp; // 当前生效上限（与 EffectiveStats.MaxHp 同步）
+        private int _manaCredit; // 回蓝整数点数账本（批次5.6）：每步攒"回蓝值"点，攒满 TicksPerSecond 点换 1 蓝——避免浮点每步取整吞掉小数回蓝
 
         // ── 身份（出生定死）──
         public int Id { get; }
@@ -210,6 +211,23 @@ namespace AutoChess.Game
             int applied = amount < room ? amount : room;
             CurrentMana += applied;
             _bus.Publish(new ManaChangedEvent(Id, CurrentMana, max));
+        }
+
+        /// <summary>
+        /// 每步被动回蓝入口（CombatSystem 每步调用一次，传入当前有效回蓝值）。
+        /// 为什么用整数点数账本而不是浮点累加：步长 1/30 秒时"每秒回2蓝"=每步 0.0666 蓝，
+        /// 浮点四舍五入会把它静默吞成 0；整数点数账本（每步 +回蓝值点、攒满 30 点换 1 蓝）
+        /// 换算精确、确定性无忧。蓝已满时点数照常消耗（蓝满不涨，与金铲铲口径一致）。
+        /// </summary>
+        public void RegenMana(int regenPerSecond)
+        {
+            if (regenPerSecond <= 0) return;
+            _manaCredit += regenPerSecond;
+            while (_manaCredit >= GameConst.TicksPerSecond)
+            {
+                _manaCredit -= GameConst.TicksPerSecond;
+                AddMana(1);
+            }
         }
 
         // ── 内部 ──

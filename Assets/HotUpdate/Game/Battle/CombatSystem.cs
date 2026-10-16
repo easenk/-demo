@@ -127,8 +127,9 @@ namespace AutoChess.Game
             {
                 Unit u = roster[i];
                 if (!u.IsAlive || !u.IsOnBoard) continue;
-                // 决策⑦：蓝量 int，每 tick = RoundToInt(每秒回蓝 × 0.5)；术士 2/秒 → 1/tick 恰好整数
-                u.AddMana(GameMath.RoundToInt(u.EffectiveStats.ManaRegenPerSecond * GameConst.TickSeconds));
+                // 决策⑦（随步长 1/30 修订）：每步把"每秒回蓝"交给单位自己的整数点数账本，
+                // 攒满 TicksPerSecond(30) 点 = 1 蓝——精确无浮点，回蓝节奏与步长解耦
+                u.RegenMana(u.EffectiveStats.ManaRegenPerSecond);
             }
         }
 
