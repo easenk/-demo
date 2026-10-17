@@ -1,11 +1,12 @@
 namespace AutoChess.Game
 {
     // ─────────────────────────────────────────────────────
-    // 阶段1 战斗事件 + 蓝条事件（批次5.5 扩容后共 11 条）。纪律（设计文档 2.6）：
+    // 阶段1 战斗事件（10 条）+ 蓝条事件（批次5.5，1 条）+ 阶段2 事件（批次1 起）。
+    // 纪律（设计文档 2.6）：
     //  · 全部 struct —— 广播零装箱（EventBus 的 where T : struct 强制）
     //  · 只带"事实快照"与 int id，不带对象引用 —— 表现层拿 id 查自己的视图表
     //  · 名字一律过去时 —— 事件是"已发生的事实"，不是命令
-    //  · 阶段2/3/5 的事件（商店/经济/羁绊/技能…）一律不预定义
+    //  · 未开工系统的事件不预定义 —— 阶段2 各系统开工时按批追加，阶段3/5 同理
     // ─────────────────────────────────────────────────────
 
     /// <summary>BoardData.TryPlace 成功后广播：某单位被放上了棋盘。</summary>
@@ -164,6 +165,66 @@ namespace AutoChess.Game
             UnitId = unitId;
             CurrentMana = currentMana;
             MaxMana = maxMana;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次1：经济 4 条；商店/羁绊/回合/晶矿/策略在后续批次按需追加）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>Economy 金币变动：Delta 为正 = 收入、为负 = 支出。钱包 UI 直接读 Gold。</summary>
+    public struct GoldChangedEvent
+    {
+        public int Gold;
+        public int Delta;
+
+        public GoldChangedEvent(int gold, int delta)
+        {
+            Gold = gold;
+            Delta = delta;
+        }
+    }
+
+    /// <summary>
+    /// Economy 经验变动：XpProgress = 当前级内已攒（累计 - 本级门槛）、XpToNextLevel = 距下一级还差。
+    /// 事件序契约：升级时 LevelUpEvent 逐级先发，最后一次性发本事件携带最终进度。
+    /// </summary>
+    public struct XpChangedEvent
+    {
+        public int Level;
+        public int XpProgress;
+        public int XpToNextLevel;
+
+        public XpChangedEvent(int level, int xpProgress, int xpToNextLevel)
+        {
+            Level = level;
+            XpProgress = xpProgress;
+            XpToNextLevel = xpToNextLevel;
+        }
+    }
+
+    /// <summary>Economy 升级：Level = 新等级（一次加经验连升多级时逐级各发一条）。</summary>
+    public struct LevelUpEvent
+    {
+        public int Level;
+
+        public LevelUpEvent(int level)
+        {
+            Level = level;
+        }
+    }
+
+    /// <summary>
+    /// 一场战斗的结算收入三笔分账（决策 #21①：结算收入 = 固定段位 + 利息 + 连胜，分开记账——
+    /// 结算 UI 分行展示、测试逐笔断言）。Bill 内带记账后的当前连胜。
+    /// </summary>
+    public struct IncomeSettledEvent
+    {
+        public IncomeBill Bill;
+
+        public IncomeSettledEvent(IncomeBill bill)
+        {
+            Bill = bill;
         }
     }
 }
