@@ -26,11 +26,11 @@ namespace AutoChess.Tests
             return new Economy(bus, startGold);
         }
 
-        /// <summary>推到满级 8（L8 累计门槛恰好 54），并清掉升级路上的历史事件——只看后续动作。</summary>
+        /// <summary>推到满级 8（L8 累计门槛恰好 84，#21⑤ 修订版），并清掉升级路上的历史事件——只看后续动作。</summary>
         private Economy MaxLevelEco(int gold)
         {
             var eco = NewEco(gold);
-            eco.AddXp(54);
+            eco.AddXp(84);
             _gold.Clear(); _levelUps.Clear(); _xp.Clear(); _income.Clear(); _order.Clear();
             return eco;
         }
@@ -52,7 +52,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(2, eco.Level);           // 开局 2 级 = 上场位 2 起步
             Assert.AreEqual(0, eco.XpTotal);
             Assert.AreEqual(0, eco.XpProgress);
-            Assert.AreEqual(4, eco.XpToNextLevel);   // L3 = 4 累计经验（#21⑤）
+            Assert.AreEqual(4, eco.XpToNextLevel);   // L3 = 4 累计经验（#21⑤ 修订版）
             Assert.AreEqual(0, eco.WinStreak);
         }
 
@@ -170,7 +170,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(6, eco.Gold);
             Assert.AreEqual(3, eco.Level);
             Assert.AreEqual(0, eco.XpProgress);      // 恰好压线：级内余量 0
-            Assert.AreEqual(6, eco.XpToNextLevel);   // L4 门槛 10 - 累计 4
+            Assert.AreEqual(8, eco.XpToNextLevel);   // L4 门槛 12 - 累计 4
             CollectionAssert.AreEqual(new[] { "gold", "levelup", "xp" }, _order);   // 事件序契约
         }
 
@@ -181,11 +181,11 @@ namespace AutoChess.Tests
             eco.BuyXp();                              // → L3，累计 4
             _gold.Clear(); _levelUps.Clear(); _xp.Clear(); _order.Clear();
 
-            Assert.IsTrue(eco.BuyXp());              // +4 = 累计 8 < 10（L4）→ 不升级
+            Assert.IsTrue(eco.BuyXp());              // +4 = 累计 8 < 12（L4）→ 不升级
             Assert.AreEqual(2, eco.Gold);
             Assert.AreEqual(3, eco.Level);
             Assert.AreEqual(4, eco.XpProgress);      // 8 - 4
-            Assert.AreEqual(2, eco.XpToNextLevel);   // 10 - 8
+            Assert.AreEqual(4, eco.XpToNextLevel);   // 12 - 8
             Assert.AreEqual(0, _levelUps.Count);
             CollectionAssert.AreEqual(new[] { "gold", "xp" }, _order);
         }
@@ -219,36 +219,35 @@ namespace AutoChess.Tests
             Assert.AreEqual(3, eco.Level);
             Assert.AreEqual(5, eco.XpTotal);
             Assert.AreEqual(1, eco.XpProgress);      // 5 - 4
-            Assert.AreEqual(5, eco.XpToNextLevel);   // 10 - 5
+            Assert.AreEqual(7, eco.XpToNextLevel);   // 12 - 5
         }
 
         [Test]
         public void AddXp_MultiLevelUp_AllLevelUpsBeforeFinalXp()
         {
             var eco = NewEco(0);
-            eco.AddXp(30);                            // L3(4)→L4(10)→L5(16)→L6(24)，余 6 < 38 停
-            Assert.AreEqual(6, eco.Level);
+            eco.AddXp(30);                            // L3(4)→L4(12)→L5(22)，余 8 < 36 停
+            Assert.AreEqual(5, eco.Level);
             Assert.AreEqual(30, eco.XpTotal);
-            Assert.AreEqual(6, eco.XpProgress);      // 30 - 24
-            Assert.AreEqual(8, eco.XpToNextLevel);   // 38 - 30
+            Assert.AreEqual(8, eco.XpProgress);      // 30 - 22
+            Assert.AreEqual(6, eco.XpToNextLevel);   // 36 - 30
 
-            Assert.AreEqual(4, _levelUps.Count);      // 连升 4 级逐级各发一条
+            Assert.AreEqual(3, _levelUps.Count);      // 连升 3 级逐级各发一条
             Assert.AreEqual(3, _levelUps[0].Level);
             Assert.AreEqual(4, _levelUps[1].Level);
             Assert.AreEqual(5, _levelUps[2].Level);
-            Assert.AreEqual(6, _levelUps[3].Level);
             Assert.AreEqual(1, _xp.Count);            // 最终经验条状态只发一次
             CollectionAssert.AreEqual(
-                new[] { "levelup", "levelup", "levelup", "levelup", "xp" }, _order);   // 升级全在前
+                new[] { "levelup", "levelup", "levelup", "xp" }, _order);   // 升级全在前
         }
 
         [Test]
         public void AddXp_ExactMaxLevel_ZeroRemainder()
         {
             var eco = NewEco(0);
-            eco.AddXp(54);                            // L8 恰好压线（#21⑤ 满级全程数学的地基）
+            eco.AddXp(84);                            // L8 恰好压线（#21⑤ 修订版满级全程数学的地基）
             Assert.AreEqual(8, eco.Level);
-            Assert.AreEqual(54, eco.XpTotal);
+            Assert.AreEqual(84, eco.XpTotal);
             Assert.AreEqual(0, eco.XpProgress);
             Assert.AreEqual(0, eco.XpToNextLevel);
             Assert.AreEqual(6, _levelUps.Count);      // L3~L8 共 6 级
@@ -348,7 +347,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(2, eco.XpProgress);
 
             eco.SettleBattleIncome(true, 0);
-            Assert.AreEqual(4, eco.XpTotal);         // 两场 4 → 恰好 L3
+            Assert.AreEqual(4, eco.XpTotal);         // 两场 4 → 恰好 L3（L3 门槛 4 不变）
             Assert.AreEqual(3, eco.Level);
         }
 
