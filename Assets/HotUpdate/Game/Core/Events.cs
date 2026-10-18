@@ -169,7 +169,7 @@ namespace AutoChess.Game
     }
 
     // ─────────────────────────────────────────────────────
-    // 阶段2 事件（批次1：经济 4 条；商店/羁绊/回合/晶矿/策略在后续批次按需追加）
+    // 阶段2 事件（批次1：经济 4 条）
     // ─────────────────────────────────────────────────────
 
     /// <summary>Economy 金币变动：Delta 为正 = 收入、为负 = 支出。钱包 UI 直接读 Gold。</summary>
@@ -225,6 +225,36 @@ namespace AutoChess.Game
         public IncomeSettledEvent(IncomeBill bill)
         {
             Bill = bill;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次2：商店 2 条）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>ShopSystem 上架完成：5 格快照（0 = 空格）。表现层按 CharId 查 CharacterTable 取显示数据。</summary>
+    public struct ShopRolledEvent
+    {
+        public int[] CharIds;
+
+        public ShopRolledEvent(int[] charIds)
+        {
+            CharIds = charIds;
+        }
+    }
+
+    /// <summary>ShopSystem 买走一格：SlotIndex = 格号、CharId = 买到的角色、GoldLeft = 买后余额。</summary>
+    public struct ShopBoughtEvent
+    {
+        public int SlotIndex;
+        public int CharId;
+        public int GoldLeft;
+
+        public ShopBoughtEvent(int slotIndex, int charId, int goldLeft)
+        {
+            SlotIndex = slotIndex;
+            CharId = charId;
+            GoldLeft = goldLeft;
         }
     }
 }
