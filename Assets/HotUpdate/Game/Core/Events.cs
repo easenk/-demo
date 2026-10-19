@@ -257,4 +257,22 @@ namespace AutoChess.Game
             GoldLeft = goldLeft;
         }
     }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次4：羁绊 1 条）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// SynergySystem 全量重算后广播：全部族的快照（逐族 Count/TierIndex）。
+    /// 无变化的重算保持沉默（只陈述真发生的事实）；快照数组是拷贝，外部改不动账本。
+    /// </summary>
+    public struct SynergiesChangedEvent
+    {
+        public SynergyInfo[] Snapshot;
+
+        public SynergiesChangedEvent(SynergyInfo[] snapshot)
+        {
+            Snapshot = snapshot;
+        }
+    }
 }

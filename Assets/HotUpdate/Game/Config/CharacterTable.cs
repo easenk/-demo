@@ -70,24 +70,63 @@ namespace AutoChess.Game
             return _byCost.TryGetValue(cost, out var bucket) ? bucket : Array.Empty<CharacterDef>();
         }
 
+        /// <summary>
+        /// 代码内置基线：决策 #22② 的 18 棋子矩阵（占位名 + 占位面板 + 双标签）——
+        /// 与 SynergyTable.Default（六族 v1）、ShopPool（18 种 229 份）互为咬合的测试基线；
+        /// 面板数值 = 第一版锚点，阶段3 平衡期连千场压测统一重定。
+        /// 蓝条数据纪律（批次5.5）：3 费+棋子配 MaxMana>0（1~2 费恒 0 = 无蓝条单位）——
+        /// 这是表数据纪律，不写 if(cost) 进战斗循环。
+        /// </summary>
         private static CharacterDef[] BuildDefaultDefs()
         {
-            // 基线三人组：结构占位（覆盖三档费用、近战/远程/法师三种身位），数值阶段3 平衡期再定
             return new[]
             {
-                new CharacterDef(
-                    id: 1, displayName: "见习剑士", cost: 1,
-                    baseStats: new UnitStats { MaxHp = 50, AttackPower = 14, Armor = 30, MagicResist = 30, AbilityPower = 100, AttackRange = 1, AttackInterval = 1.0f, MoveInterval = 1.0f, CritChance = 5, CritDamage = 50 },
-                    synergies: new int[0]),
-                new CharacterDef(
-                    id: 2, displayName: "林间弩手", cost: 2,
-                    baseStats: new UnitStats { MaxHp = 45, AttackPower = 16, Armor = 20, MagicResist = 20, AbilityPower = 100, AttackRange = 3, AttackInterval = 1.2f, MoveInterval = 1.1f, CritChance = 5, CritDamage = 50 },
-                    synergies: new int[0]),
-                new CharacterDef(
-                    id: 3, displayName: "学徒法师", cost: 3,
-                    baseStats: new UnitStats { MaxHp = 40, AttackPower = 10, Armor = 20, MagicResist = 40, AbilityPower = 120, AttackRange = 2, AttackInterval = 1.5f, MoveInterval = 1.0f, CritChance = 5, CritDamage = 50 },
-                    synergies: new int[0]),
+                Def( 1, "野猪武士",   1, new[] { 1, 2 },  60, 12, 35, 25, 1, 1.1f, 1.0f),
+                Def( 2, "兽人投矛手", 1, new[] { 1, 4 },  55, 14, 25, 20, 2, 1.2f, 1.0f),
+                Def( 3, "民兵",       1, new[] { 2, 6 },  65, 11, 30, 30, 1, 1.2f, 1.0f),
+                Def( 4, "巫术学徒",   1, new[] { 3, 5 },  45,  9, 20, 25, 2, 1.4f, 1.0f),
+                Def( 5, "魔弹射手",   1, new[] { 3, 4 },  45, 13, 20, 20, 3, 1.3f, 1.1f),
+
+                Def( 6, "暗狼刺客",   2, new[] { 1, 5 },  70, 16, 25, 20, 1, 1.0f, 0.9f),
+                Def( 7, "符文守卫",   2, new[] { 2, 3 },  80, 13, 40, 35, 1, 1.3f, 1.0f),
+                Def( 8, "夜行狙击手", 2, new[] { 4, 5 },  55, 17, 20, 20, 3, 1.4f, 1.0f),
+                Def( 9, "弓卫侍从",   2, new[] { 6, 4 },  60, 15, 25, 25, 3, 1.2f, 1.0f),
+                Def(10, "随军牧师",   2, new[] { 6, 3 },  65, 12, 25, 30, 2, 1.3f, 1.0f),
+
+                Def(11, "战团督军",   3, new[] { 1, 2 }, 150, 22, 45, 35, 1, 1.2f, 1.0f, maxMana: 60),
+                Def(12, "王家神射",   3, new[] { 4, 6 },  90, 26, 25, 25, 4, 1.3f, 1.0f, maxMana: 60),
+                Def(13, "战地法师",   3, new[] { 3, 5 },  85, 14, 25, 35, 2, 1.5f, 1.0f, maxMana: 60),
+
+                Def(14, "影刃",       4, new[] { 5, 4 }, 160, 32, 30, 25, 1, 0.9f, 0.8f, maxMana: 70),
+                Def(15, "铁甲巨兽",   4, new[] { 2, 1 }, 320, 24, 60, 50, 1, 1.6f, 1.1f, maxMana: 70),
+                Def(16, "宫廷大法师", 4, new[] { 6, 3 }, 150, 18, 30, 40, 3, 1.5f, 1.0f, maxMana: 70),
+
+                Def(17, "圣殿之王",   5, new[] { 6, 2 }, 500, 35, 70, 60, 1, 1.4f, 1.0f, maxMana: 80),
+                Def(18, "魔渊兽王",   5, new[] { 5, 1 }, 450, 45, 50, 45, 1, 1.1f, 0.9f, maxMana: 80),
             };
+
+            // 速记工厂：hp/atk/armor(双抗同值)/range/间隔 + 可选蓝条（3 费+）；
+            // 法强基准 100、暴击出厂基准 5/50（#10/#12 口径）；星级放大只动血/攻（阶段1 规则）
+            static CharacterDef Def(int id, string name, int cost, int[] synergies,
+                int hp, int atk, int armor, int mr, int range, float atkIv, float moveIv, int maxMana = 0)
+                => new CharacterDef(id, name, cost,
+                    new UnitStats
+                    {
+                        MaxHp = hp,
+                        AttackPower = atk,
+                        Armor = armor,
+                        MagicResist = mr,
+                        AbilityPower = 100,
+                        AttackRange = range,
+                        AttackInterval = atkIv,
+                        MoveInterval = moveIv,
+                        CritChance = 5,
+                        CritDamage = 50,
+                        MaxMana = maxMana,
+                        ManaPerHit = maxMana > 0 ? 10 : 0,
+                        ManaRegenPerSecond = maxMana > 0 ? 2 : 0,
+                    },
+                    synergies);
         }
     }
 }
