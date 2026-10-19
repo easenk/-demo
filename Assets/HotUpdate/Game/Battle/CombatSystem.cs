@@ -5,9 +5,13 @@ namespace AutoChess.Game
 {
     /// <summary>
     /// 固定 tick 战斗模拟器。没有真实时间概念：Tick() 被调一次 = 模拟时间前进
-    /// GameConst.TickSeconds（0.5 秒）。表现层按真实时间慢慢调（看戏），
+    /// GameConst.TickSeconds（1/30 秒）。表现层按真实时间慢慢调（看戏），
     /// 测试用 for 循环狂调（一秒几百局）——同一份代码两种人生。
     /// 一个 tick 内部的执行顺序恒定（5.4），测试焊死。
+    ///
+    /// 批次3：战斗钩子骨架（阶段2-接口设计 5.2）——六挂点 + 按来源注册注销。
+    /// 回归红线：无钩子注册时与阶段1 行为逐字节一致（掷骰序列/事件流/TickCount/RollCount 不变）——
+    /// 所有分发先查 _hooks.Count，空表零副作用；CombatRules 本批不动（转钩子实现是阶段3 的事）。
     /// </summary>
     public sealed class CombatSystem
     {
@@ -24,9 +28,15 @@ namespace AutoChess.Game
         private readonly List<Unit> _enemyRoster = new List<Unit>();
         private readonly List<Unit> _targetScan = new List<Unit>();
 
+        // ── 批次3：钩子账本 ──
+        private readonly List<IBattleHook> _hooks = new List<IBattleHook>();
+        private readonly List<IBattleHook> _hookSnapshot = new List<IBattleHook>(); // 快照遍历缓冲（EventBus 同款纪律）
+        private readonly BattleContext _context;   // 钩子视角的战场句柄（棋盘/随机/攻击条推进）
+
         private int _tickCount;
         private int _rollCount;
-        private bool _ended; // BattleEndedEvent 已发的执行印记（全程只发一次）
+        private bool _ended;    // BattleEndedEvent 已发的执行印记（全程只发一次）
+        private bool _started;  // OnBattleStart 已触发（首 tick 最前，一场只一次）
 
         public CombatSystem(BoardData board, EventBus bus, uint seed = 0u, CombatRules rules = null)
         {
@@ -34,6 +44,7 @@ namespace AutoChess.Game
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _random = new GameRandom(seed);   // 唯一随机源；种子注入（铁律4）
             _rules = rules ?? new CombatRules();
+            _context = new BattleContext(this, _board, _random);
         }
 
         /// <summary>战斗是否已见分晓：任一方清空或到达 MaxTicks。查棋盘现算，无隐藏计数器（D5）。</summary>
@@ -50,7 +61,45 @@ namespace AutoChess.Game
         /// <summary>掷骰总次数。暴击率 0 的单位一次都不掷——随机序列消耗点与实际行为一一对应（D9）。</summary>
         public int RollCount => _rollCount;
 
-        /// <summary>推进一个模拟时间步（GameConst.TickSeconds = 0.5 秒）。</summary>
+        // ─────────────────────── 钩子注册与注销（批次3） ───────────────────────
+
+        /// <summary>注册战斗钩子（触发序 = 注册序）。hook 为 null 抛异常。</summary>
+        public void AddHook(IBattleHook hook)
+        {
+            if (hook == null) throw new ArgumentNullException(nameof(hook));
+            _hooks.Add(hook);
+        }
+
+        /// <summary>按来源整批注销，返回移除数；sourceId=0 抛（同修饰器纪律：无来源不是"一个来源"）。</summary>
+        public int RemoveHooksBySource(int sourceId)
+        {
+            if (sourceId == ModSourceId.None)
+                throw new ArgumentException("SourceId=0 表示无来源，不是可卸载的来源段", nameof(sourceId));
+            int removed = 0;
+            for (int i = _hooks.Count - 1; i >= 0; i--)
+            {
+                if (_hooks[i].SourceId == sourceId)
+                {
+                    _hooks.RemoveAt(i);
+                    removed++;
+                }
+            }
+            return removed;
+        }
+
+        /// <summary>
+        /// 攻击条确定性推进（#22④ 骨架口，经 BattleContext.PushAttackProgress 调用）：
+        /// 只加进度不立即行动、封顶蓄满（bar ≤ 1）不产生攻击欠条、不引入随机。
+        /// </summary>
+        internal void PushAttackProgress(Unit unit, float fraction)
+        {
+            if (unit == null || !unit.IsAlive || fraction <= 0f) return;
+            _attackBar.TryGetValue(unit, out float bar);
+            bar = GameMath.Min(bar + fraction, 1f);
+            _attackBar[unit] = bar;
+        }
+
+        /// <summary>推进一个模拟时间步（GameConst.TickSeconds = 1/30 秒）。</summary>
         public void Tick()
         {
             // 1. 收尾守卫：已收尾 → TickCount 不增、不再广播
@@ -59,19 +108,30 @@ namespace AutoChess.Game
             // 2.
             _tickCount++;
 
-            // 3. 拍照：先玩家后敌方 = 全盘行主序快照（防止"先行动的单位挪进未扫区被扫两次"）
+            // 3. ★战斗开始钩子：首 tick 最前（拍照/行动之前），一场只一次；
+            //    空场战斗（构造即终局）从不 Tick，永不触发，一致于"战斗根本没发生"
+            if (!_started)
+            {
+                _started = true;
+                if (_hooks.Count > 0) DispatchOnBattleStart();
+            }
+
+            // 4. 拍照：先玩家后敌方 = 全盘行主序快照（防止"先行动的单位挪进未扫区被扫两次"）
             _board.CollectUnitsOnBoard(true, _playerRoster);
             _board.CollectUnitsOnBoard(false, _enemyRoster);
 
-            // 4. 逐个行动（名单里本 tick 早些时候阵亡的跳过）
+            // 5. 逐个行动（名单里本 tick 早些时候阵亡的跳过）
             ActRoster(_playerRoster);
             ActRoster(_enemyRoster);
 
-            // 4.5 每 tick 回蓝记账（批次5.5；术士被动——阶段2 钩子骨架"每 tick 结束"的预留位，
-            //     将来这里是钩子实现之一：外壳换、记账逻辑不白写）
+            // 6. 每 tick 回蓝记账（批次5.5；术士被动）
             TickManaRegen();
 
-            // 5. 胜负结算（查棋盘）
+            // 7. ★每 tick 结束钩子：属于"tick 的常规内容"——
+            //    恒在胜负结算之前，BattleEndedEvent 依旧是本 tick 最后一条事件
+            if (_hooks.Count > 0) DispatchOnTickEnd();
+
+            // 8. 胜负结算（查棋盘）
             ResolveOutcome();
         }
 
@@ -167,13 +227,38 @@ namespace AutoChess.Game
                 isCrit = _random.RollPercent(chance);
             }
 
+            // ★出手前钩子：唯一可改伤挂点——穿透/增伤/减伤写进 draft（暴击已掷定不改，D2-3）
+            var draft = new AttackDraft { Attacker = attacker, Target = target, IsCrit = isCrit };
+            if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
+
             // 时序契约：先出手（Attacked），后见血（Damaged/Died 在 TakeDamage 内）
             _bus.Publish(new UnitAttackedEvent(attacker.Id, target.Id, isCrit));
 
-            int applied = attacker.Attack(target, isCrit);
+            int applied = attacker.Attack(target, isCrit, ToExtras(in draft));
+
+            // 攻击条 -=1 提前结算（原在方法末尾）：OnDeath 钩子的攻击条推进（#22④ 暗影 6 档）
+            // 必须读到"已扣减"的余量，否则推的进度会被满格 clamp 吃掉。
+            // 条在本方法后续流程（回蓝/吸血/死亡处理）中不被读取——位置前移不改变阶段1 可观察行为。
+            _attackBar[attacker] -= 1f;
+
+            // ★出手后钩子（攻方视角：动作收尾）
+            if (_hooks.Count > 0)
+                DispatchOnAfterAttack(new AttackResult
+                {
+                    Attacker = attacker, Target = target, IsCrit = isCrit,
+                    DamageApplied = applied, TargetDied = !target.IsAlive,
+                });
+
+            // ★受伤后钩子（守方视角：承受了这次伤害——致死也发，伤害确实发生了）
+            if (_hooks.Count > 0)
+                DispatchOnDamaged(new DamageResult
+                {
+                    Target = target, Source = attacker,
+                    Damage = applied, CurrentHp = target.CurrentHp, Died = !target.IsAlive,
+                });
 
             // 普攻命中回蓝（批次5.5，职业口径；无蓝条/0回蓝在 AddMana 内静默）
-            // 记账顺序锁定：伤害落地 → 命中回蓝 → 吸血回血
+            // 记账顺序锁定：伤害落地 → 出手后/受伤后钩子 → 命中回蓝 → 吸血回血
             attacker.AddMana(attacker.EffectiveStats.ManaPerHit);
 
             // 吸血：对"实际造成的伤害"按规则百分比回复（仅玩家侧享受）
@@ -185,6 +270,10 @@ namespace AutoChess.Game
 
             if (!target.IsAlive)
             {
+                // ★死亡时钩子：死者/击杀者/死亡格——尸体尚未清出、格位还在（钩子还能读到最后一格）
+                if (_hooks.Count > 0)
+                    DispatchOnDeath(new DeathInfo { Dead = target, Killer = attacker, Cell = target.Pos });
+
                 // 死者立即清出棋盘（尸体让格），然后触发击杀回复
                 _board.Remove(target);
 
@@ -194,9 +283,6 @@ namespace AutoChess.Game
                     if (heal > 0) attacker.Heal(heal);
                 }
             }
-
-            // 条 -= 1：保留余量，防高攻速下进度漂移
-            _attackBar[attacker] -= 1f;
         }
 
         private void PerformMove(Unit u, Unit target)
@@ -232,5 +318,64 @@ namespace AutoChess.Game
             bool playerWon = enemyWiped && !playerWiped;           // 超时/玩家全灭 → 判负
             _bus.Publish(new BattleEndedEvent(playerWon, _tickCount)); // 全程只发一次
         }
+
+        // ─────────────────────── 钩子分发（批次3） ───────────────────────
+
+        /// <summary>快照遍历（EventBus 同款纪律）：迭代中注册/注销不影响当轮。</summary>
+        private void BeginHookSnapshot()
+        {
+            _hookSnapshot.Clear();
+            for (int i = 0; i < _hooks.Count; i++) _hookSnapshot.Add(_hooks[i]);
+        }
+
+        private void DispatchOnBattleStart()
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnBattleStart(_context);
+        }
+
+        private void DispatchOnTickEnd()
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnTickEnd(_context);
+        }
+
+        private void DispatchOnBeforeAttack(ref AttackDraft draft)
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnBeforeAttack(_context, ref draft);
+        }
+
+        private void DispatchOnAfterAttack(in AttackResult result)
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnAfterAttack(_context, in result);
+        }
+
+        private void DispatchOnDamaged(in DamageResult result)
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnDamaged(_context, in result);
+        }
+
+        private void DispatchOnDeath(in DeathInfo death)
+        {
+            BeginHookSnapshot();
+            for (int i = 0; i < _hookSnapshot.Count; i++)
+                _hookSnapshot[i].OnDeath(_context, in death);
+        }
+
+        private static AttackExtras ToExtras(in AttackDraft draft) => new AttackExtras
+        {
+            FlatPen = draft.FlatPen,
+            PercentPen = draft.PercentPen,
+            DamageAmpPercent = draft.DamageAmpPercent,
+            DamageReductionPercent = draft.DamageReductionPercent,
+        };
     }
 }

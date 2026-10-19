@@ -144,7 +144,14 @@ namespace AutoChess.Game
         }
 
         /// <summary>普攻＝物理伤害（金铲铲口径）；暴击由 CombatSystem 掷骰后传入（随机源单点化）。</summary>
-        public int Attack(Unit target, bool isCrit)
+        public int Attack(Unit target, bool isCrit) => Attack(target, isCrit, default);
+
+        /// <summary>
+        /// 普攻三参重载（批次3）：extras 由 CombatSystem 的出手前钩子（OnBeforeAttack）填好后传入——
+        /// 穿透/增伤/减伤四个乘区从阶段1 的恒 0 开通为钩子可填。
+        /// 两参版本委托本重载且 extras 全 0——阶段1 行为（含全部测试）逐字节不变。
+        /// </summary>
+        public int Attack(Unit target, bool isCrit, in AttackExtras extras)
         {
             DamageInput input = new DamageInput
             {
@@ -154,7 +161,10 @@ namespace AutoChess.Game
                 Attacker = EffectiveStats,
                 Defender = target.EffectiveStats,
                 IsCrit = isCrit,
-                // FlatPen/PercentPen/增伤/减伤 阶段1 恒 0（阶段3 装备/Buff 填充）
+                FlatPen = extras.FlatPen,
+                PercentPen = extras.PercentPen,
+                DamageAmpPercent = extras.DamageAmpPercent,
+                DamageReductionPercent = extras.DamageReductionPercent,
             };
             int final = DamageFormula.Compute(input);
             return target.TakeDamage(final, this);
