@@ -161,7 +161,7 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void Recalculate_BenchNotCounted_TraitModsReachBench()
+        public void Recalculate_BenchNotCounted_NoModsOnBench()
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
@@ -178,7 +178,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(2, sys.LastSnapshot[1].Count, "计数只看场上：备战席不计");
             Assert.AreEqual(0, sys.LastSnapshot[1].TierIndex, "2 件 → 第 1 档");
             Assert.AreEqual(20, t1.EffectiveStats.Armor, "场上铁壁吃到护甲 +20（基础 0 → 20）");
-            Assert.AreEqual(20, bench.EffectiveStats.Armor, "备战席同族同样享受（D2-2：挂名册防上下场掉血）");
+            Assert.AreEqual(0, bench.EffectiveStats.Armor, "备战席不享受羁绊加成（2026-10-27 拍板：只挂场上）");
         }
 
         // ── 档位与覆盖制（2026-10-19 用户拍板：激活高档时高档增益覆盖低档）──

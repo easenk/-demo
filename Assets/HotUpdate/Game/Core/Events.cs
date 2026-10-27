@@ -275,4 +275,123 @@ namespace AutoChess.Game
             Snapshot = snapshot;
         }
     }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次5：回合流程 6 条 + 血量 1 条）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// GameSession 玩家血量变动（2026-10-27 批次5 拍板：新增通用事件，与 GoldChanged/XpChanged 同构——
+    /// 血/金/经验三条玩家资源线一个范式）。Delta 为正 = 回复（Boss 限时回血）、为负 = 扣血（战败）。
+    /// 回复封顶 100、扣血钳 0 由 Session 保证后才广播——事件只陈述真发生的事实。
+    /// </summary>
+    public struct HpChangedEvent
+    {
+        public int Hp;
+        public int Delta;
+
+        public HpChangedEvent(int hp, int delta)
+        {
+            Hp = hp;
+            Delta = delta;
+        }
+    }
+
+    /// <summary>Session.Buy 建单位入名册之后广播：名册事实在商店事实（ShopBoughtEvent）之后。Star 恒 1（买到的就是 1 星）。</summary>
+    public struct UnitAcquiredEvent
+    {
+        public int UnitId;
+        public int CharId;
+        public int Star;
+
+        public UnitAcquiredEvent(int unitId, int charId, int star)
+        {
+            UnitId = unitId;
+            CharId = charId;
+            Star = star;
+        }
+    }
+
+    /// <summary>Session.Sell 卖出之后广播：Gold = 本次退金（SellPrice 公式：总投入 - (星级 - 1)）。</summary>
+    public struct UnitSoldEvent
+    {
+        public int UnitId;
+        public int CharId;
+        public int Star;
+        public int Gold;
+
+        public UnitSoldEvent(int unitId, int charId, int star, int gold)
+        {
+            UnitId = unitId;
+            CharId = charId;
+            Star = star;
+            Gold = gold;
+        }
+    }
+
+    /// <summary>Session 合成之后广播：ResultUnitId = 合成体（新 Unit，满血出厂）、ConsumedUnitIds = 被吞的三张。</summary>
+    public struct UnitMergedEvent
+    {
+        public int ResultUnitId;
+        public int CharId;
+        public int NewStar;
+        public int[] ConsumedUnitIds;
+
+        public UnitMergedEvent(int resultUnitId, int charId, int newStar, int[] consumedUnitIds)
+        {
+            ResultUnitId = resultUnitId;
+            CharId = charId;
+            NewStar = newStar;
+            ConsumedUnitIds = consumedUnitIds;
+        }
+    }
+
+    /// <summary>EnterPrep 第 0 步广播：回合开始（Phase 已置 Prep）。</summary>
+    public struct RoundStartedEvent
+    {
+        public int RoundNumber;
+        public RoundType Type;
+
+        public RoundStartedEvent(int roundNumber, RoundType type)
+        {
+            RoundNumber = roundNumber;
+            Type = type;
+        }
+    }
+
+    /// <summary>
+    /// Settle 第 6 步广播：回合结束的事实快照。
+    /// DamageTaken = 本场战败扣血（胜恒 0；拍板口径 = DamageBase + 存活敌人数，奖励关豁免、Boss 败清零）；
+    /// GoldGained = 三笔分账合计（IncomeSettledEvent 里看逐笔明细）。
+    /// </summary>
+    public struct RoundEndedEvent
+    {
+        public int Round;
+        public bool PlayerWon;
+        public int DamageTaken;
+        public int GoldGained;
+
+        public RoundEndedEvent(int round, bool playerWon, int damageTaken, int goldGained)
+        {
+            Round = round;
+            PlayerWon = playerWon;
+            DamageTaken = damageTaken;
+            GoldGained = goldGained;
+        }
+    }
+
+    /// <summary>终局判定通过后广播（每局最多一次）：RoundsCompleted = 完成回合数（血尽 = Round-1 / 通关 = 14）。</summary>
+    public struct RunFinishedEvent
+    {
+        public RunRating Rating;
+        public int RoundsCompleted;
+        public int FinalHp;
+
+        public RunFinishedEvent(RunRating rating, int roundsCompleted, int finalHp)
+        {
+            Rating = rating;
+            RoundsCompleted = roundsCompleted;
+            FinalHp = finalHp;
+        }
+    }
 }

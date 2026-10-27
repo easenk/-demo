@@ -6,12 +6,14 @@ namespace AutoChess.Game
     /// <summary>
     /// 羁绊重算管线（幂等全量重算）：
     ///   1) 计数：只数场上玩家单位、同 CharId 只计一次（羁绊数的是"不同棋子"，D2-1）；
-    ///   2) 摘干净：名册玩家单位按族号段两段一刀全摘（族 id = 面板修饰器；100+族 id = 战斗内动态修饰器如叠层）
-    ///      ——档位互斥与降档的保证，也顺带清掉上一场战斗钩子挂的动态修饰器（D2-4）；
+    ///   2) 摘干净：全部玩家单位（场上 + 备战席）按族号段两段一刀全摘
+    ///      （族 id = 面板修饰器；100+族 id = 战斗内动态修饰器如叠层）——
+    ///      档位互斥与降档的保证，也顺带清掉上一场战斗钩子挂的动态修饰器（D2-4）；
+    ///      备战席必须参与这一步：刚下场的单位不能把旧加成带回去；
     ///   3) 重挂：只挂激活档这一档（覆盖制，2026-10-19 用户拍板：激活高档时高档增益覆盖低档——高档比低档高，
-    ///      互斥取最高不叠加）；
-    ///      本族修饰器挂名册内带标签玩家单位（含备战席，D2-2——防上下场时的 MaxHp 钳制掉血），
-    ///      全队修饰器挂名册内全部玩家单位；模板盖族章后入账；
+    ///      互斥取最高不叠加）；且只挂棋盘上的玩家单位——
+    ///      本族修饰器挂场上带标签者，全队修饰器挂场上全体；
+    ///      备战席不享受（2026-10-27 用户拍板推翻原 D2-2"含备战席"口径）；模板盖族章后入账；
     ///   4) 快照：逐族记 SynergyInfo，与上次比 Count + TierIndex，有变化才广播 SynergiesChangedEvent。
     /// 战斗期间不重算（羁绊开战瞬间冻结——TFT 同款语义）；触发点全部在备战期操作（批次5 接线）+ EnterPrep 兜底自愈。
     /// 钩子注册走 RegisterBattleHooks（开战瞬间调用一次）。
@@ -69,7 +71,8 @@ namespace AutoChess.Game
                 }
             }
 
-            // 3) 重挂：激活档及其以下全部档（高档含低档）；范围：本族→名册带标签者、全队→名册全体
+            // 3) 重挂：只挂激活档（覆盖制），且只挂 boardPlayers（棋盘上的玩家单位）。
+            //    playerRoster 仅用于上一步摘账——刚下场者也要被摘到；备战席绝不被挂上（2026-10-27 拍板）。
             var snapshot = new SynergyInfo[_synergies.All.Count];
             for (int i = 0; i < _synergies.All.Count; i++)
             {
@@ -85,18 +88,17 @@ namespace AutoChess.Game
                     var td = def.Tiers[tier];
                     if (td.TraitModifiers != null && td.TraitModifiers.Length > 0)
                     {
-                        foreach (var u in playerRoster)
+                        foreach (var u in boardPlayers)
                         {
-                            if (!u.IsPlayerSide || !HasTag(u, def.Id)) continue;
+                            if (!HasTag(u, def.Id)) continue;
                             foreach (var tmpl in td.TraitModifiers)
                                 u.AddModifier(Stamp(tmpl, def.Id));
                         }
                     }
                     if (td.TeamModifiers != null && td.TeamModifiers.Length > 0)
                     {
-                        foreach (var u in playerRoster)
+                        foreach (var u in boardPlayers)
                         {
-                            if (!u.IsPlayerSide) continue;
                             foreach (var tmpl in td.TeamModifiers)
                                 u.AddModifier(Stamp(tmpl, def.Id));
                         }
