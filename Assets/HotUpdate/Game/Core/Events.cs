@@ -394,4 +394,55 @@ namespace AutoChess.Game
             FinalHp = finalHp;
         }
     }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次6：晶矿 2 条）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Session 掉落记账广播（战斗死亡事件的回调内，批次6）：某敌方单位死在 Cell，掉了一颗挡位 Tier 的晶矿。
+    /// OreId = 掉落物实例 id（IdAllocator 发，OresOnGround 列表的键）——区别于 OreDefId（奖励定义 id，开矿时才产生）。
+    /// 掉落物不占棋盘格：表现层拿 Cell 摆场景矿体（同格多矿合法，散开摆放归表现层，D2-10）。
+    /// </summary>
+    public struct OreDroppedEvent
+    {
+        public int OreId;
+        public int Tier;
+        public Pos Cell;
+
+        public OreDroppedEvent(int oreId, int tier, Pos cell)
+        {
+            OreId = oreId;
+            Tier = tier;
+            Cell = cell;
+        }
+    }
+
+    /// <summary>
+    /// Session.PickOre 开矿广播（批次6）：奖励已当场发放完毕（金币/经验的事件序在本事件之前——先到账后陈述）。
+    /// 奖励事实摊平进事件：装备类仅带 EquipmentId（背包消费者阶段3 订阅本事件即可，#12⑧ 只给散件）；
+    /// 修饰器数组这类对象引用不进事件（总线纪律：只带事实快照与 int id）。
+    /// </summary>
+    public struct OreOpenedEvent
+    {
+        public int OreId;                 // 掉落物实例 id（与 OreDroppedEvent 同一颗）
+        public int Tier;                  // 挡位 1~3
+        public Pos Cell;                  // 开矿位置（表现层在此播开矿动画）
+        public int OreDefId;              // 抽中的奖励定义 id
+        public OreRewardType RewardType; // 金币/经验/装备散件（2026-10-27 拍板：只有三种）
+        public int Amount;                // 金币/经验数值；装备类恒 0
+        public int EquipmentId;           // 装备散件 id；其余类恒 0
+
+        public OreOpenedEvent(int oreId, int tier, Pos cell, int oreDefId,
+            OreRewardType rewardType, int amount, int equipmentId)
+        {
+            OreId = oreId;
+            Tier = tier;
+            Cell = cell;
+            OreDefId = oreDefId;
+            RewardType = rewardType;
+            Amount = amount;
+            EquipmentId = equipmentId;
+        }
+    }
 }

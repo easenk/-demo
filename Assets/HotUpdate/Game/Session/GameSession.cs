@@ -8,7 +8,7 @@ namespace AutoChess.Game
     {
         /// <summary>构造后、StartRun 前：一切玩法操作拒绝。</summary>
         PreRun,
-        /// <summary>备战期：买/卖/刷/买经验/上下场/摆位开放（批次6/7 各加捡矿/选策略）。</summary>
+        /// <summary>备战期：买/卖/刷/买经验/上下场/摆位/捡矿开放（批次6 已加捡矿；批次7 再加选策略）。</summary>
         Prep,
         /// <summary>战斗中：全部备战期操作拒绝；结算等表现层排空闸门回调（#23）。</summary>
         Battle,
@@ -96,6 +96,10 @@ namespace AutoChess.Game
         private int _eliteClears;                                  // 已通关精英关数（#21① 段位：0~2）
         private bool _policyDue;                                   // 奖励关胜利记账（批次7 策略弹选消费）
 
+        // ── 晶矿（批次6）：掉落记账 + 场上掉落物 ──
+        private readonly Dictionary<int, int> _oreTierByUnitId = new Dictionary<int, int>(); // 本场记账：敌方 unitId → 挡位（只记 OreTier>0；每场 SpawnEncounter 重建）
+        private readonly List<OreDrop> _oresOnGround = new List<OreDrop>();   // 场上掉落物：只增不减，唯一出口 PickOre（战败已掉的矿照样留，#17⑧）
+
         // ── 状态（private set：只有本类能改）──
 
         public GamePhase Phase { get; private set; }
@@ -122,6 +126,7 @@ namespace AutoChess.Game
         public IReadOnlyList<Unit> EnemyRoster => _enemyRoster;
         public CombatSystem Combat => _combat;                                  // 未开过战为 null
         public IReadOnlyList<SynergyInfo> Synergies => _synergy.LastSnapshot;   // 未重算过为 null
+        public IReadOnlyList<OreDrop> OresOnGround => _oresOnGround;           // 批次6：场上晶矿（StartBattle 门禁源；表现层做"捡完才能开战"引导与点击仲裁）
 
         public GameSession(EventBus bus, uint seed = 0u, GameTables tables = null)
         {
@@ -134,6 +139,7 @@ namespace AutoChess.Game
             _shop = new ShopSystem(_pool, _eco, bus);
             _synergy = new SynergySystem(_tables.Characters, _tables.Synergies, bus);
             _ids = new IdAllocator();
+            _bus.Subscribe<UnitDiedEvent>(OnUnitDied);   // 晶矿掉落记账（批次6）：纯事件驱动——CombatSystem 不知道晶矿存在
             Phase = GamePhase.PreRun;
         }
 
@@ -159,13 +165,14 @@ namespace AutoChess.Game
         }
 
         /// <summary>
-        /// 开战：Prep → Battle（9.2 七步时间线）。批次5 门禁只有 Phase；批次6 加"场上有晶矿"、
-        /// 批次7 加"有待选策略"两个条件（各在自己的批次接入，门禁形态不变）。
+        /// 开战：Prep → Battle（9.2 七步时间线）。门禁 = 非备战期 + 场上有未拾取晶矿（批次6，#17⑥：
+        /// 必须捡完才能开战，纯拒绝四不动）；批次7 再加"有待选策略"一个条件，门禁形态不变。
         /// </summary>
         public bool StartBattle()
         {
-            // 1. 门禁：非备战期纯拒绝（批次6/7 增量扩容）
+            // 1. 门禁：非备战期纯拒绝；场上有未拾取晶矿纯拒绝（#17⑥——相位/敌方/种子流/钱包全不动）
             if (Phase != GamePhase.Prep) return false;
+            if (_oresOnGround.Count > 0) return false;
 
             // 2. 遭遇生成：按编成表生成敌方（charId=0、IsPlayerSide=false、star=1），摆敌方半场
             SpawnEncounter();
@@ -444,6 +451,8 @@ namespace AutoChess.Game
         /// </summary>
         private void SpawnEncounter()
         {
+            _oreTierByUnitId.Clear();   // 每场重建：上一场未死怪的账目随退场作废（没死就没事件，#17⑧）
+
             Encounter encounter = _tables.Enemies.Get(Round);
             if (encounter.IsEmpty) return;   // 未配置回合：空编成（构造即终局 → 玩家胜）
 
@@ -453,13 +462,17 @@ namespace AutoChess.Game
                 if (_board.TryPlace(u, spawn.Cell))
                 {
                     _enemyRoster.Add(u);
-                    continue;
                 }
-                Pos fallback = FirstFreeEnemyCell();
-                if (fallback.X < 0 || !_board.TryPlace(u, fallback))
-                    throw new InvalidOperationException(
-                        $"回合 {Round}「{spawn.DisplayName}」摆位失败且敌方半场无空格——编成表数据事故");
-                _enemyRoster.Add(u);
+                else
+                {
+                    Pos fallback = FirstFreeEnemyCell();
+                    if (fallback.X < 0 || !_board.TryPlace(u, fallback))
+                        throw new InvalidOperationException(
+                            $"回合 {Round}「{spawn.DisplayName}」摆位失败且敌方半场无空格——编成表数据事故");
+                    _enemyRoster.Add(u);
+                }
+                // 掉落记账（批次6）：只看编成表挡位字段、不查回合类型（#17③——非奖励关不掉靠填表纪律实现）
+                if (spawn.OreTier > 0) _oreTierByUnitId[u.Id] = spawn.OreTier;
             }
         }
 
@@ -575,6 +588,65 @@ namespace AutoChess.Game
                 // 不升星、继续查当前星：当前星凑不齐 3 时才 star++ 看下一星（连锁合成）
             }
             return boardChanged;
+        }
+
+        // ─────────────────────── 晶矿拾取（批次6） ───────────────────────
+
+        /// <summary>
+        /// 捡矿（7.2）：拒绝矩阵 = 非备战期 / 未知掉落物 id，纯拒绝（四不动）。
+        /// 通过后挡位查池 → 会话随机源抽 1 条 → 立即发放 → 广播 OreOpenedEvent → 移出列表。
+        /// 发放路径（2026-10-27 拍板：掉落物只有金币/经验/装备散件三种）：
+        /// 金币 → Eco.AddGold；经验 → Eco.AddXp；装备 → 仅事件（EquipmentId 已带，背包阶段3 接——#12⑧ 只给散件）。
+        /// </summary>
+        public bool PickOre(int oreId)
+        {
+            if (Phase != GamePhase.Prep) return false;
+
+            int index = -1;
+            OreDrop drop = default;
+            for (int i = 0; i < _oresOnGround.Count; i++)
+            {
+                if (_oresOnGround[i].Id != oreId) continue;
+                index = i;
+                drop = _oresOnGround[i];
+                break;
+            }
+            if (index < 0) return false;   // 未知 id（含已捡过的——成功即移出列表，再捡自然落空）
+
+            OreDef def = DrawOre(drop.Tier);
+            switch (def.Type)
+            {
+                case OreRewardType.Gold: _eco.AddGold(def.Amount); break;
+                case OreRewardType.Xp: _eco.AddXp(def.Amount); break;
+                case OreRewardType.Equipment: break;   // 阶段2 仅事件：消费者阶段3 订阅 OreOpenedEvent
+            }
+
+            _bus.Publish(new OreOpenedEvent(drop.Id, drop.Tier, drop.Cell,
+                def.Id, def.Type, def.Amount, def.EquipmentId));
+            _oresOnGround.RemoveAt(index);   // 唯一出口（7.2 留存纪律）
+            return true;
+        }
+
+        /// <summary>挡位查池抽 1 条（7.2）：会话随机源吃一次整数抽取——
+        /// 同种子同操作序列 = 同奖励（确定性测试焊死，也是阶段5 回放重演的地基之一）。</summary>
+        private OreDef DrawOre(int tier)
+        {
+            OreTierDef pool = _tables.Ores.GetTier(tier);
+            int pick = _random.NextInt(pool.OreIds.Length);
+            return _tables.Ores.GetOre(pool.OreIds[pick]);
+        }
+
+        /// <summary>战斗死亡事件的掉落记账（批次6）：死者在本场账本里 → 生成掉落物
+        /// （Id 用 IdAllocator 发、Cell = 死亡格）→ 出账本 → 广播 OreDroppedEvent。
+        /// 纯事件驱动：CombatSystem 零改动、不知道晶矿存在；
+        /// 玩家单位不在账本里永不掉矿；未死的怪随退场自然不掉（没死就没事件，#17⑧）。</summary>
+        private void OnUnitDied(UnitDiedEvent e)
+        {
+            if (!_oreTierByUnitId.TryGetValue(e.UnitId, out int tier)) return;
+            _oreTierByUnitId.Remove(e.UnitId);
+            var drop = new OreDrop(_ids.Next(), tier, e.Cell);
+            _oresOnGround.Add(drop);
+            _bus.Publish(new OreDroppedEvent(drop.Id, drop.Tier, drop.Cell));
         }
 
         // ─────────────────────── 内部 ───────────────────────
