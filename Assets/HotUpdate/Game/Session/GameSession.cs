@@ -8,7 +8,7 @@ namespace AutoChess.Game
     {
         /// <summary>构造后、StartRun 前：一切玩法操作拒绝。</summary>
         PreRun,
-        /// <summary>备战期：买/卖/刷/买经验/上下场/摆位/捡矿开放（批次6 已加捡矿；批次7 再加选策略）。</summary>
+        /// <summary>备战期：买/卖/刷/买经验/上下场/摆位/捡矿/选策略开放（阶段2 玩法入口全量）。</summary>
         Prep,
         /// <summary>战斗中：全部备战期操作拒绝；结算等表现层排空闸门回调（#23）。</summary>
         Battle,
@@ -100,6 +100,14 @@ namespace AutoChess.Game
         private readonly Dictionary<int, int> _oreTierByUnitId = new Dictionary<int, int>(); // 本场记账：敌方 unitId → 挡位（只记 OreTier>0；每场 SpawnEncounter 重建）
         private readonly List<OreDrop> _oresOnGround = new List<OreDrop>();   // 场上掉落物：只增不减，唯一出口 PickOre（战败已掉的矿照样留，#17⑧）
 
+        // ── 策略（批次7）：候选 / 已选 / 实例留存（2026-10-27 拍板：修饰器只挂场上，重算制） ──
+        private readonly List<int> _policyCandidates = new List<int>();   // 待选候选（弹选后存在、选定即消费清空——门禁逼玩家选完）
+        private readonly List<int> _ownedPolicyIds = new List<int>();     // 已选策略 Id（已选不再进候选，#18⑤；战绩页"已选策略"数据源）
+        private int _policyInstanceSeq;                                    // 实例序号：每次 PickPolicy 递增 → SourceId = StrategyBase + 序号（一条策略一个章）
+        private readonly List<(int SourceId, StatModifier[] Mods)> _activePolicyMods = new List<(int, StatModifier[])>();      // 已选策略的修饰器实例（重算制的重挂数据源）
+        private readonly List<(int SourceId, int HpLoss)> _activePolicyHpCosts = new List<(int, int)>();                        // 已选策略的战后扣血（Settle 每场消费：胜也扣，2026-10-27 拍板 A 案）
+        private readonly List<(int SourceId, Func<IReadOnlyList<Unit>, IBattleHook> Factory)> _activePolicyHooks = new List<(int, Func<IReadOnlyList<Unit>, IBattleHook>)>();  // 已选策略的钩子工厂（每场 StartBattle 新造一只注册）
+
         // ── 状态（private set：只有本类能改）──
 
         public GamePhase Phase { get; private set; }
@@ -127,6 +135,9 @@ namespace AutoChess.Game
         public CombatSystem Combat => _combat;                                  // 未开过战为 null
         public IReadOnlyList<SynergyInfo> Synergies => _synergy.LastSnapshot;   // 未重算过为 null
         public IReadOnlyList<OreDrop> OresOnGround => _oresOnGround;           // 批次6：场上晶矿（StartBattle 门禁源；表现层做"捡完才能开战"引导与点击仲裁）
+        public bool HasPolicyChoice => _policyCandidates.Count > 0;           // 批次7：有待选策略（StartBattle 门禁源）
+        public IReadOnlyList<int> PolicyCandidates => _policyCandidates;       // 批次7：候选策略 Id（弹窗渲染用）
+        public IReadOnlyList<int> OwnedPolicyIds => _ownedPolicyIds;           // 批次7：已选策略 Id（战绩页画像字段之一，#19③）
 
         public GameSession(EventBus bus, uint seed = 0u, GameTables tables = null)
         {
@@ -165,14 +176,15 @@ namespace AutoChess.Game
         }
 
         /// <summary>
-        /// 开战：Prep → Battle（9.2 七步时间线）。门禁 = 非备战期 + 场上有未拾取晶矿（批次6，#17⑥：
-        /// 必须捡完才能开战，纯拒绝四不动）；批次7 再加"有待选策略"一个条件，门禁形态不变。
+        /// 开战：Prep → Battle（9.2 七步时间线）。门禁 = 非备战期 + 场上有未拾取晶矿（#17⑥）
+        /// + 有待选策略（#18⑥）——两个门禁都是纯拒绝四不动，必须捡完/选完才能开战。
         /// </summary>
         public bool StartBattle()
         {
-            // 1. 门禁：非备战期纯拒绝；场上有未拾取晶矿纯拒绝（#17⑥——相位/敌方/种子流/钱包全不动）
+            // 1. 门禁：非备战期纯拒绝；场上有未拾取晶矿纯拒绝（#17⑥）；有待选策略纯拒绝（#18⑥）
             if (Phase != GamePhase.Prep) return false;
             if (_oresOnGround.Count > 0) return false;
+            if (_policyCandidates.Count > 0) return false;
 
             // 2. 遭遇生成：按编成表生成敌方（charId=0、IsPlayerSide=false、star=1），摆敌方半场
             SpawnEncounter();
@@ -188,6 +200,16 @@ namespace AutoChess.Game
 
             // 6. 羁绊钩子开战注册（#22④ 唯一入口；快照激活档 + 开战瞬间冻结的成员名单）
             _synergy.RegisterBattleHooks(_combat, _board);
+
+            // 6.5 策略钩子注册（批次7）：已选策略留存的工厂每场新造一只（与羁绊同款纪律——
+            //     钩子不吃跨场状态；传开战瞬间冻结的场上玩家名单）
+            if (_activePolicyHooks.Count > 0)
+            {
+                var boardPlayers = new List<Unit>();
+                _board.CollectUnitsOnBoard(true, boardPlayers);
+                for (int i = 0; i < _activePolicyHooks.Count; i++)
+                    _combat.AddHook(_activePolicyHooks[i].Factory(boardPlayers));
+            }
 
             // 7. 构造即终局（一方空场）→ 战斗根本没发生，直接结算（钩子永不触发）
             Phase = GamePhase.Battle;
@@ -224,6 +246,13 @@ namespace AutoChess.Game
                 if (damageTaken > 0) ApplyHpChange(-damageTaken);
             }
 
+            // 2.5 已选策略的战后扣血（批次7，2026-10-27 拍板 A 案：每场战斗结束都扣，胜也扣；
+            //     全场覆灭照样生效——作用对象是玩家血量不是棋子。只发 HpChangedEvent 不进
+            //     DamageTaken：DamageTaken 保持"战败惩罚"原义（胜恒 0），策略代价是另一类账——
+            //     表现层从 HpChangedEvent 区分"挨打演出"与"抽成演出"）
+            for (int i = 0; i < _activePolicyHpCosts.Count; i++)
+                ApplyHpChange(-_activePolicyHpCosts[i].HpLoss);
+
             // 3. 结算收入（#21①⑤）：先按"本场之前已通关精英数"入账（R6 场本身还是 5 金段位），
             //    精英胜才涨段（下一场起 +1；精英败档位不涨）
             IncomeBill bill = _eco.SettleBattleIncome(won, _eliteClears);
@@ -236,7 +265,7 @@ namespace AutoChess.Game
                 if (heal > 0) ApplyHpChange(heal);
             }
 
-            // 5. 奖励关胜利 → 策略记账（批次7 的 EnterPrep 弹选消费此旗标）
+            // 5. 奖励关胜利 → 策略记账（EnterPrep 第 5 步弹选消费此旗标，#18②）
             if (won && roundDef.Type == RoundType.Reward) _policyDue = true;
 
             // 6. 广播回合结束的事实快照
@@ -290,7 +319,7 @@ namespace AutoChess.Game
             _bus.Publish(new UnitAcquiredEvent(u.Id, u.CharId, u.Star));
 
             bool boardChanged = TryMerge(u.CharId);
-            if (boardChanged) RecalculateSynergies();
+            if (boardChanged) RecalculateBoardEffects();   // 场上成员变了：羁绊 + 策略修饰器同点位捆绑重算
             return true;
         }
 
@@ -326,7 +355,7 @@ namespace AutoChess.Game
             int gold = def.SellPrice(u.Star);
             _eco.AddGold(gold);
             _bus.Publish(new UnitSoldEvent(u.Id, u.CharId, u.Star, gold));
-            if (boardUnit) RecalculateSynergies();
+            if (boardUnit) RecalculateBoardEffects();   // 场上卖：羁绊 + 策略修饰器捆绑重算（备战席卖出不重算）
             return true;
         }
 
@@ -342,7 +371,7 @@ namespace AutoChess.Game
 
             _bench.Remove(u);
             _playerBoard.Add(u);
-            RecalculateSynergies();
+            RecalculateBoardEffects();   // 上场：羁绊 + 策略修饰器捆绑重算（新上场者补挂）
             return true;
         }
 
@@ -365,7 +394,7 @@ namespace AutoChess.Game
 
             _playerBoard.Remove(u);
             _bench.Add(u);
-            RecalculateSynergies();
+            RecalculateBoardEffects();   // 下场：羁绊 + 策略修饰器捆绑重算（下场者被摘干净——"只有上战场的棋子才算"）
             return true;
         }
 
@@ -409,10 +438,16 @@ namespace AutoChess.Game
             // 4. 商店免费上架（收入与被动经验已改在上一场结算发放——#21①⑤；R1 首备无结算，钱包=起始 3 金）
             _shop.RollOffer();
 
-            // 5. 策略弹选：_policyDue → 抽 3 候选 + 广播（批次7 接线）
+            // 5. 策略弹选（#18②）：奖励关胜利的旗标 → 池 = 全表 - 已选 → 部分Fisher-Yates 抽 3
+            //    → 存候选 → 广播（空池静默；候选存在则 StartBattle 被门禁拒，逼玩家选完）
+            if (_policyDue)
+            {
+                _policyDue = false;
+                OfferPolicies();
+            }
 
-            // 6. 羁绊兜底自愈重算（清战斗内动态修饰器；复活归位后阵容应与冻结时一致，不一致 = 有遗漏路径）
-            RecalculateSynergies();
+            // 6. 羁绊+策略修饰器兜底自愈重算（清战斗内动态修饰器；复活归位后阵容应与冻结时一致，不一致 = 有遗漏路径）
+            RecalculateBoardEffects();
         }
 
         /// <summary>死者复活：优先原位（玩家半场内才合法）；被占或死于敌方半场 → 让位到最近己方空格。</summary>
@@ -649,7 +684,128 @@ namespace AutoChess.Game
             _bus.Publish(new OreDroppedEvent(drop.Id, drop.Tier, drop.Cell));
         }
 
+        // ─────────────────────── 策略三选一（批次7） ───────────────────────
+
+        /// <summary>
+        /// 弹选（8.2；EnterPrep 第 5 步消费 _policyDue）：池 = 全表 - 已选（已选不再进候选，#18⑤）
+        /// → 部分Fisher-Yates 抽 3（池不足 3 有多少给多少，空池静默不广播）→ 存候选 → 广播。
+        /// 会话随机源在此吃最多 3 次抽取——同种子同操作序列 = 同候选（确定性测试焊死）。
+        /// </summary>
+        private void OfferPolicies()
+        {
+            var pool = new List<int>();
+            for (int i = 0; i < _tables.Policies.All.Count; i++)
+            {
+                int id = _tables.Policies.All[i].Id;
+                if (!_ownedPolicyIds.Contains(id)) pool.Add(id);
+            }
+
+            int take = pool.Count < 3 ? pool.Count : 3;
+            for (int i = 0; i < take; i++)
+            {
+                int j = _random.NextInt(i, pool.Count);   // 部分Fisher-Yates：[i, n) 抽一位换到 i 位
+                (pool[i], pool[j]) = (pool[j], pool[i]);
+            }
+
+            _policyCandidates.Clear();
+            for (int i = 0; i < take; i++) _policyCandidates.Add(pool[i]);
+            if (take > 0) _bus.Publish(new PolicyOfferedEvent(_policyCandidates.ToArray()));
+        }
+
+        /// <summary>
+        /// 选策略（8.2）：拒绝矩阵 = 非备战期 / 无待选 / 格号越界，纯拒绝（四不动）。
+        /// 通过后逐条目发放：修饰器盖 StrategyBase + 实例序号章入留存账（重算制的重挂数据源）；
+        /// 金币正入账、负 SpendClamped（D2-5：扣到 0 为止不产生负债）；经验入账；
+        /// 装备仅记账（阶段3 消费者按 PolicyId 查表入包，#12⑧）；战后扣血入留存账（Settle 每场消费）；
+        /// 钩子工厂当场留存（每场 StartBattle 新造一只注册，与羁绊同款纪律）。
+        /// 最后：记已选 → 消费候选（解锁开战）→ 按当前场上名单挂修饰器（重算制）→ 广播。
+        /// </summary>
+        public bool PickPolicy(int index)
+        {
+            if (Phase != GamePhase.Prep) return false;
+            if (_policyCandidates.Count == 0) return false;                    // 无待选
+            if (index < 0 || index >= _policyCandidates.Count) return false;   // 格号越界
+
+            int policyId = _policyCandidates[index];
+            PolicyDef def = _tables.Policies.Get(policyId);
+            if (def.Id == 0) return false;   // 理论不可达（候选来自全表）——防御性兜底
+
+            int instanceSourceId = ModSourceId.StrategyBase + ++_policyInstanceSeq;   // 一条策略一个章
+            for (int e = 0; e < def.Effects.Length; e++)
+            {
+                PolicyEffect effect = def.Effects[e];
+                switch (effect.Type)
+                {
+                    case PolicyEffectType.TeamModifier:
+                        var stamped = new StatModifier[effect.Modifiers.Length];
+                        for (int m = 0; m < effect.Modifiers.Length; m++)
+                            stamped[m] = Stamp(effect.Modifiers[m], instanceSourceId);
+                        _activePolicyMods.Add((instanceSourceId, stamped));
+                        break;
+                    case PolicyEffectType.Gold:
+                        if (effect.Amount > 0) _eco.AddGold(effect.Amount);
+                        else _eco.SpendClamped(-effect.Amount);   // 负金币=代价：扣到 0 为止（D2-5）
+                        break;
+                    case PolicyEffectType.Xp:
+                        _eco.AddXp(effect.Amount);
+                        break;
+                    case PolicyEffectType.Equipment:
+                        break;   // 阶段2 仅记账：消费者阶段3 按 PolicyId 查表入包（#12⑧ 只给散件）
+                    case PolicyEffectType.PostBattleHpLoss:
+                        _activePolicyHpCosts.Add((instanceSourceId, effect.Amount));
+                        break;
+                }
+                if (effect.HookFactory != null)   // 钩子与效果类型正交：条目可"既发效果又带钩子"
+                    _activePolicyHooks.Add((instanceSourceId, effect.HookFactory));
+            }
+
+            _ownedPolicyIds.Add(policyId);
+            _policyCandidates.Clear();        // 消费候选——解锁开战（门禁的另一半）
+            RecalculatePolicyModifiers();     // 选定即按当前场上名单挂上；后续跟捆绑重算走
+            _bus.Publish(new PolicyPickedEvent(index, policyId, instanceSourceId));
+            return true;
+        }
+
+        /// <summary>
+        /// 策略修饰器重算（2026-10-27 拍板：正负统一只挂场上玩家单位——"只有上战场的棋子才算"）。
+        /// 幂等全量重算，与 SynergySystem 同构：摘账扫场上 + 备战席（刚下场者必须被摘到），
+        /// 重挂只挂棋盘上的玩家单位（备战席不享受）。触发点 = 场上成员变化 / 升星 / EnterPrep 兜底，
+        /// 与羁绊重算同点位捆绑（RecalculateBoardEffects）。
+        /// </summary>
+        private void RecalculatePolicyModifiers()
+        {
+            if (_activePolicyMods.Count == 0) return;
+
+            for (int i = 0; i < _playerBoard.Count; i++)
+                for (int m = 0; m < _activePolicyMods.Count; m++)
+                    _playerBoard[i].RemoveModifiersBySource(_activePolicyMods[m].SourceId);
+            for (int i = 0; i < _bench.Count; i++)
+                for (int m = 0; m < _activePolicyMods.Count; m++)
+                    _bench[i].RemoveModifiersBySource(_activePolicyMods[m].SourceId);
+
+            for (int i = 0; i < _playerBoard.Count; i++)
+                for (int m = 0; m < _activePolicyMods.Count; m++)
+                {
+                    var mods = _activePolicyMods[m].Mods;
+                    for (int k = 0; k < mods.Length; k++)
+                        _playerBoard[i].AddModifier(mods[k]);
+                }
+        }
+
+        /// <summary>表内模板盖实例章（模板 SourceId 恒 0；同 SynergySystem.Stamp 纪律）。</summary>
+        private static StatModifier Stamp(StatModifier tmpl, int sourceId)
+            => new StatModifier(tmpl.Kind, tmpl.Op, tmpl.Value, sourceId);
+
         // ─────────────────────── 内部 ───────────────────────
+
+        /// <summary>场上成员变化/升星的统一重算入口（批次7 起：羁绊与策略修饰器同点位捆绑）。
+        /// 触发点：上场/下场/场上卖出/涉及场上的合成/EnterPrep 兜底——仅购买、备战席合成、备战席卖出不触发
+        /// （场上成员没变，两侧都无状态可变）。</summary>
+        private void RecalculateBoardEffects()
+        {
+            RecalculateSynergies();
+            RecalculatePolicyModifiers();
+        }
 
         /// <summary>羁绊重算的唯一入口。临时输入 = 我方战场 + 备战席（刚下场者也要能摘到旧加成）；
         /// SynergySystem 内部只给棋盘上的玩家单位挂账——备战席只摘不挂。</summary>

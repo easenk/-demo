@@ -61,7 +61,8 @@ namespace AutoChess.Tests
             return list.ToArray();
         }
 
-        /// <summary>注入包：角色表必给；编成默认空表（全回合空编成 = 构造即终局秒胜链）；回合/羁绊/矿池用 Default。</summary>
+        /// <summary>注入包：角色表必给；编成默认空表（全回合空编成 = 构造即终局秒胜链）；回合/羁绊/矿池用 Default；
+        /// 策略表给空表——奖励关胜后弹选拿 0 候选静默，既有链路不被弹选门禁/负面词条随机干扰（策略行为在 PolicyTests 锁）。</summary>
         private static GameTables Tables(CharacterTable chars, EnemyTable enemies = null)
             => new GameTables
             {
@@ -71,6 +72,7 @@ namespace AutoChess.Tests
                 Enemies = enemies ?? EnemyTable.Empty,
                 Synergies = SynergyTable.Default,
                 Ores = OreTable.Default,
+                Policies = new PolicyTable(new PolicyDef[0]),
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,
@@ -192,6 +194,7 @@ namespace AutoChess.Tests
             Assert.IsFalse(s.MoveOnBoard(1, new Pos(1, 0)));
             Assert.IsFalse(s.TakeOffBoard(1));
             Assert.IsFalse(s.PickOre(1), "PreRun 捡矿拒（批次6）");
+            Assert.IsFalse(s.PickPolicy(0), "PreRun 选策略拒（批次7）");
             Assert.AreEqual(0, s.Bench.Count + s.PlayerBoard.Count + s.EnemyRoster.Count, "全部拒绝：名册不动");
             Assert.AreEqual(GameSession.StartGold, s.Eco.Gold, "全部拒绝：钱包不动");
         }
@@ -218,6 +221,7 @@ namespace AutoChess.Tests
             Assert.IsFalse(s.MoveOnBoard(1, new Pos(1, 0)));
             Assert.IsFalse(s.TakeOffBoard(1));
             Assert.IsFalse(s.PickOre(1), "Battle 期捡矿拒（批次6）");
+            Assert.IsFalse(s.PickPolicy(0), "Battle 期选策略拒（批次7）");
             Assert.IsFalse(s.SettleBattle(), "战斗未分晓（IsOver=false）时结算必须拒绝");
             Assert.AreEqual(GameSession.StartGold - 1, s.Eco.Gold, "战斗期买入被拒：钱包只有开局买棋那一笔");
         }
@@ -1338,7 +1342,7 @@ namespace AutoChess.Tests
         // ─────────────────────── GameTables 注入包 ───────────────────────
 
         [Test]
-        public void GameTables_Default_BundlesSixTables()
+        public void GameTables_Default_BundlesSevenTables()
         {
             var t = GameTables.Default;
             Assert.AreSame(CharacterTable.Default, t.Characters, "Default = 各表 Default 打包（同一引用）");
@@ -1346,7 +1350,8 @@ namespace AutoChess.Tests
             Assert.AreSame(RoundTable.Default, t.Rounds);
             Assert.AreSame(EnemyTable.Default, t.Enemies);
             Assert.AreSame(SynergyTable.Default, t.Synergies);
-            Assert.AreSame(OreTable.Default, t.Ores, "批次6 起矿池入包（PolicyTable 批次7 再加，届时七表）");
+            Assert.AreSame(OreTable.Default, t.Ores, "批次6 起矿池入包");
+            Assert.AreSame(PolicyTable.Default, t.Policies, "批次7 起策略表入包——七表齐（阶段2 全量）");
             Assert.AreEqual(18, t.Characters.Count);
             Assert.AreEqual(14, t.Rounds.Count);
         }

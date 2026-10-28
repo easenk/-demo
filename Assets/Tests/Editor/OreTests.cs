@@ -73,7 +73,8 @@ namespace AutoChess.Tests
             });
         }
 
-        /// <summary>注入包：角色表必给；编成默认空表；矿池默认 Default。</summary>
+        /// <summary>注入包：角色表必给；编成默认空表；矿池默认 Default；策略表给空表（批次7 起弹选管线必读此表——
+        /// 空表=奖励关胜后 0 候选静默，OreTests 链路不被策略门禁干扰）。</summary>
         private static GameTables Tables(CharacterTable chars, EnemyTable enemies = null, OreTable ores = null)
             => new GameTables
             {
@@ -83,6 +84,7 @@ namespace AutoChess.Tests
                 Enemies = enemies ?? EnemyTable.Empty,
                 Synergies = SynergyTable.Default,
                 Ores = ores ?? OreTable.Default,
+                Policies = new PolicyTable(new PolicyDef[0]),
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,

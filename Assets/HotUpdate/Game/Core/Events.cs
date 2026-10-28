@@ -445,4 +445,42 @@ namespace AutoChess.Game
             EquipmentId = equipmentId;
         }
     }
+
+    // ─────────────────────────────────────────────────────
+    // 阶段2 事件（批次7：策略 2 条）
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Session 弹选广播（EnterPrep 第 5 步，批次7）：奖励关胜利后的下回合备战期弹出候选
+    /// （全表 - 已选，部分Fisher-Yates 抽 3；池不足 3 有多少给多少，空池静默不广播）。
+    /// 表现层按 CandidatePolicyIds 查 PolicyTable 渲染三选一弹窗。
+    /// </summary>
+    public struct PolicyOfferedEvent
+    {
+        public int[] CandidatePolicyIds;
+
+        public PolicyOfferedEvent(int[] candidatePolicyIds)
+        {
+            CandidatePolicyIds = candidatePolicyIds;
+        }
+    }
+
+    /// <summary>
+    /// Session.PickPolicy 选定广播（批次7）：效果已当场发放完毕（金币/经验的事件序在本事件之前）。
+    /// InstanceSourceId = 该次选择的实例章（ModSourceId.StrategyBase + 序号）——修饰器按源管理、
+    /// 钩子注销句柄、战绩页"已选策略"展示三用的枢纽。Index = 候选格号（弹窗哪一格被点了）。
+    /// </summary>
+    public struct PolicyPickedEvent
+    {
+        public int Index;
+        public int PolicyId;
+        public int InstanceSourceId;
+
+        public PolicyPickedEvent(int index, int policyId, int instanceSourceId)
+        {
+            Index = index;
+            PolicyId = policyId;
+            InstanceSourceId = instanceSourceId;
+        }
+    }
 }
