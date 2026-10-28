@@ -42,7 +42,7 @@ namespace AutoChess.Tests
             };
 
         private static CharacterDef Char(int id, int hp, int atk, float atkIv = 1f, float moveIv = 1f,
-            int range = 1, int crit = 0, params int[] tags)
+            int range = 1, int crit = 0, params SynergyId[] tags)
             => new CharacterDef(id, $"棋子{id}", 1, Stats(hp, atk, atkIv, moveIv, range, crit), tags);
 
         /// <summary>敌方速记：crit 恒 0（表数据纪律 D2-7）、攻速 1.3s 可覆盖。</summary>
@@ -76,7 +76,7 @@ namespace AutoChess.Tests
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,
-            float moveIv = 1f, int range = 1, int crit = 0, params int[] tags)
+            float moveIv = 1f, int range = 1, int crit = 0, params SynergyId[] tags)
             => new CharacterTable(new[] { Char(1, hp, atk, atkIv, moveIv, range, crit, tags) });
 
         private static GameSession New(EventBus bus, GameTables tables, uint seed = 0u)
@@ -811,8 +811,8 @@ namespace AutoChess.Tests
             // id1/id2 带蛮兽标签（上场激活 2 件档）；id3 无标签（备战合成用，不干扰计数）
             var chars = new CharacterTable(new[]
             {
-                Char(1, 500, 100, tags: 1),
-                Char(2, 500, 100, tags: 1),
+                Char(1, 500, 100, tags: SynergyId.Brute),
+                Char(2, 500, 100, tags: SynergyId.Brute),
                 Char(3, 500, 100),
             });
             var s = New(bus, Tables(chars));
@@ -822,7 +822,7 @@ namespace AutoChess.Tests
             BuyChar(s, 2);
             Assert.IsTrue(s.PlaceOnBoard(s.Bench.First(u => u.CharId == 1).Id, new Pos(0, 0)));
             Assert.IsTrue(s.PlaceOnBoard(s.Bench.First(u => u.CharId == 2).Id, new Pos(1, 0)));
-            Assert.AreEqual(0, SynergyTierIndexOf(s, 1), "场上两个蛮兽 → 2 件档激活");
+            Assert.AreEqual(0, SynergyTierIndexOf(s, SynergyId.Brute), "场上两个蛮兽 → 2 件档激活");
             int eventsAfterActivate = synergyEvents.Count;
 
             // 购买 + 备战席合成：场上成员没变 → 不重算（无事件、快照不动）
@@ -831,7 +831,7 @@ namespace AutoChess.Tests
             BuyChar(s, 3);
             Assert.AreEqual(1, s.Bench.Count(u => u.CharId == 3 && u.Star == 2), "备战席合成 2 星");
             Assert.AreEqual(eventsAfterActivate, synergyEvents.Count, "仅备战席的合成不触发重算");
-            Assert.AreEqual(2, SynergyCountOf(s, 1), "快照计数不动");
+            Assert.AreEqual(2, SynergyCountOf(s, SynergyId.Brute), "快照计数不动");
         }
 
         [Test]
@@ -843,9 +843,9 @@ namespace AutoChess.Tests
 
             var chars = new CharacterTable(new[]
             {
-                Char(1, 500, 100, tags: 1),
-                Char(2, 500, 100, tags: 1),
-                Char(3, 500, 100, tags: 1),
+                Char(1, 500, 100, tags: SynergyId.Brute),
+                Char(2, 500, 100, tags: SynergyId.Brute),
+                Char(3, 500, 100, tags: SynergyId.Brute),
             });
             var s = New(bus, Tables(chars));
             s.Eco.AddGold(50);
@@ -867,7 +867,7 @@ namespace AutoChess.Tests
 
             // 下场即摘干净、重新上场补挂（备战席只摘不挂的闭环）
             Assert.IsTrue(s.TakeOffBoard(onBoard1.Id));
-            Assert.AreEqual(1, SynergyCountOf(s, 1), "下场后场上只剩 1 蛮兽");
+            Assert.AreEqual(1, SynergyCountOf(s, SynergyId.Brute), "下场后场上只剩 1 蛮兽");
             Assert.AreEqual(1f, onBoard1.EffectiveStats.AttackInterval, 0.0001f, "下场即摘干净（备战席不享受）");
             Assert.IsTrue(s.PlaceOnBoard(onBoard1.Id, new Pos(0, 0)));
             Assert.AreEqual(0.88f, onBoard1.EffectiveStats.AttackInterval, 0.001f, "重新上场补挂");
@@ -910,8 +910,8 @@ namespace AutoChess.Tests
             // 合成体是全新 Unit（出厂无修饰器）——重算必须把 2 件档攻速 +12% 补挂到它身上
             var chars = new CharacterTable(new[]
             {
-                Char(1, 500, 100, tags: 1),
-                Char(2, 500, 100, tags: 1),
+                Char(1, 500, 100, tags: SynergyId.Brute),
+                Char(2, 500, 100, tags: SynergyId.Brute),
             });
             var s = New(bus, Tables(chars));
             s.Eco.AddGold(50);
@@ -929,17 +929,17 @@ namespace AutoChess.Tests
             var second = s.Bench.First(u => u.CharId == 2);
             Assert.IsTrue(s.PlaceOnBoard(second.Id, new Pos(1, 0)), "第二棋子上场（计数 2 → 激活）");
 
-            Assert.AreEqual(0, SynergyTierIndexOf(s, 1), "两个不同蛮兽棋子 → 2 件档");
+            Assert.AreEqual(0, SynergyTierIndexOf(s, SynergyId.Brute), "两个不同蛮兽棋子 → 2 件档");
             Assert.AreEqual(0.88f, merged.EffectiveStats.AttackInterval, 0.001f,
                 "合成体被重算补挂 2 件档攻速 +12%（1.0 × 0.88）——新 Unit 不吃暗亏");
             Assert.AreEqual(0.88f, second.EffectiveStats.AttackInterval, 0.001f);
             Assert.GreaterOrEqual(synergyEvents.Count, 2, "首算 + 升档至少两次变化广播");
         }
 
-        private static int SynergyTierIndexOf(GameSession s, int synergyId)
+        private static int SynergyTierIndexOf(GameSession s, SynergyId synergyId)
             => s.Synergies.First(x => x.SynergyId == synergyId).TierIndex;
 
-        private static int SynergyCountOf(GameSession s, int synergyId)
+        private static int SynergyCountOf(GameSession s, SynergyId synergyId)
             => s.Synergies.First(x => x.SynergyId == synergyId).Count;
 
         // ─────────────────────── Settle 结算 ───────────────────────

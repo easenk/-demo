@@ -13,9 +13,11 @@ namespace AutoChess.Game
         public readonly string DisplayName; // 仅显示用
         public readonly int Cost;        // 商店费用 1~5
         public readonly UnitStats BaseStats;   // 1 星基准（含暴击 5/50 出厂基准）
-        public readonly int[] Synergies;   // 羁绊 id 数组（阶段1 只占位，表在阶段2 建）
+        public readonly SynergyId[] Synergies;   // 羁绊标签数组（enum——封闭集合，P3-5；阶段2 建表）
+        public readonly RoleId RoleId;   // 职业（enum——封闭集合，阶段3-接口设计 P3-5；决策 #22⑥ 职业轴）
+        public readonly int SkillId;     // 技能 id（int——开放内容表，P3-5；0 = 无技能；"3 费+才有技能"是数据录入纪律，不写 if(cost)）
 
-        // ── 星级规则（全局常量，千场压测统一调）──
+        // ── 星级规则（全局常数，千场压测统一调）──
 
         /// <summary>每升一星 HP ×1.8（3 星复利 = ×3.24）。</summary>
         public const float HpPerStar = 1.8f;
@@ -23,14 +25,28 @@ namespace AutoChess.Game
         /// <summary>每升一星 攻击 ×1.5（3 星复利 = ×2.25）。</summary>
         public const float AtkPerStar = 1.5f;
 
-        public CharacterDef(int id, string displayName, int cost, UnitStats baseStats, int[] synergies)
+        /// <summary>
+        /// 五参构造器（阶段2 原有签名，原样保留）：职业与技能恒无（RoleId.None / 0）。
+        /// 为什么保留重载而不是改签名：既有 11 处调用点（测试自建棋子）不该为新字段被迫改写——
+        /// 新字段是"可选标注"，不是必填项，改签名会把无关改动带进测试基线。
+        /// </summary>
+        public CharacterDef(int id, string displayName, int cost, UnitStats baseStats, SynergyId[] synergies)
+            : this(id, displayName, cost, baseStats, synergies, RoleId.None, 0)
+        {
+        }
+
+        /// <summary>七参构造器（阶段3：带职业与技能标注）。</summary>
+        public CharacterDef(int id, string displayName, int cost, UnitStats baseStats, SynergyId[] synergies,
+            RoleId roleId, int skillId)
         {
             Id = id;
             DisplayName = displayName ?? "";
             Cost = cost;
             BaseStats = baseStats;
             // 防御性拷贝：def 是值语义，不许外部数组事后改动污染表内容
-            Synergies = synergies == null ? Array.Empty<int>() : (int[])synergies.Clone();
+            Synergies = synergies == null ? Array.Empty<SynergyId>() : (SynergyId[])synergies.Clone();
+            RoleId = roleId;
+            SkillId = skillId;
         }
 
         /// <summary>未知/未找到的哨兵：Id = 0。调用方先查 Id 再碰其他字段。</summary>

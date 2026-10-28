@@ -42,7 +42,7 @@ namespace AutoChess.Tests
             };
 
         private static CharacterDef Char(int id, int hp, int atk, float atkIv = 1f, float moveIv = 1f,
-            int range = 1, int crit = 0, params int[] tags)
+            int range = 1, int crit = 0, params SynergyId[] tags)
             => new CharacterDef(id, $"棋子{id}", 1, Stats(hp, atk, atkIv, moveIv, range, crit), tags);
 
         /// <summary>敌方速记：挡位恒 0（策略测试避开晶矿门禁）；crit 恒 0（表数据纪律 D2-7）。</summary>
@@ -75,7 +75,7 @@ namespace AutoChess.Tests
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,
-            float moveIv = 1f, int range = 1, int crit = 0, params int[] tags)
+            float moveIv = 1f, int range = 1, int crit = 0, params SynergyId[] tags)
             => new CharacterTable(new[] { Char(1, hp, atk, atkIv, moveIv, range, crit, tags) });
 
         private static GameSession New(EventBus bus, GameTables tables, uint seed = 0u)

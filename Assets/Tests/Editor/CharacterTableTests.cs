@@ -103,13 +103,13 @@ namespace AutoChess.Tests
         [Test]
         public void Synergies_AreDefensivelyCopied()
         {
-            var external = new int[] { 11, 22 };
+            var external = new[] { SynergyId.Brute, SynergyId.Bulwark };
             var def = new CharacterDef(1, "甲", 1, DefFactory.SampleStats, external);
 
-            external[0] = 99; // 外部数组事后怎么改，都不许污染表内定义
+            external[0] = SynergyId.Crown; // 外部数组事后怎么改，都不许污染表内定义
 
-            Assert.AreEqual(11, def.Synergies[0]);
-            Assert.AreEqual(22, def.Synergies[1]);
+            Assert.AreEqual(SynergyId.Brute, def.Synergies[0]);
+            Assert.AreEqual(SynergyId.Bulwark, def.Synergies[1]);
         }
 
         [Test]

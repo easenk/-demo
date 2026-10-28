@@ -9,6 +9,7 @@ namespace AutoChess.Game
     ///  · 成员判定 = "开战瞬间场上带该标签的己方单位"快照（HashSet 引用集）；
     ///  · 载荷里的单位可能已死——动手前自查存活；
     ///  · 不引入新随机源；
+    ///  · 构造器收 SynergyId（enum，P3-5），SourceId 属性跨界处 (int) 强转；
     ///  · 叠层类修饰器用独立号段（100+族 id，见 SynergySystem.BattleDynamicSourceBase）——
     ///    与族面板修饰器（族 id 本身）互不干扰，重算时两段一并清账。
     /// </summary>
@@ -26,10 +27,10 @@ namespace AutoChess.Game
 
         public int SourceId => _sourceId;
 
-        public BeastStackHook(IReadOnlyList<Unit> members, int sourceId)
+        public BeastStackHook(IReadOnlyList<Unit> members, SynergyId synergyId)
         {
             _members = new HashSet<Unit>(members);
-            _sourceId = sourceId;
+            _sourceId = (int)synergyId;
         }
 
         public void OnBattleStart(BattleContext ctx) { }
@@ -73,10 +74,10 @@ namespace AutoChess.Game
 
         public int SourceId => _sourceId;
 
-        public IronwallReductionHook(IReadOnlyList<Unit> members, int sourceId)
+        public IronwallReductionHook(IReadOnlyList<Unit> members, SynergyId synergyId)
         {
             _members = new HashSet<Unit>(members);
-            _sourceId = sourceId;
+            _sourceId = (int)synergyId;
         }
 
         public void OnBattleStart(BattleContext ctx) { }
@@ -106,10 +107,10 @@ namespace AutoChess.Game
 
         public int SourceId => _sourceId;
 
-        public ShadowLifestealHook(IReadOnlyList<Unit> members, int sourceId)
+        public ShadowLifestealHook(IReadOnlyList<Unit> members, SynergyId synergyId)
         {
             _members = new HashSet<Unit>(members);
-            _sourceId = sourceId;
+            _sourceId = (int)synergyId;
         }
 
         public void OnBattleStart(BattleContext ctx) { }
@@ -141,10 +142,10 @@ namespace AutoChess.Game
 
         public int SourceId => _sourceId;
 
-        public ShadowKillHealHook(IReadOnlyList<Unit> members, int sourceId)
+        public ShadowKillHealHook(IReadOnlyList<Unit> members, SynergyId synergyId)
         {
             _members = new HashSet<Unit>(members);
-            _sourceId = sourceId;
+            _sourceId = (int)synergyId;
         }
 
         public void OnBattleStart(BattleContext ctx) { }
@@ -175,10 +176,10 @@ namespace AutoChess.Game
 
         public int SourceId => _sourceId;
 
-        public ShadowKillPushHook(IReadOnlyList<Unit> members, int sourceId)
+        public ShadowKillPushHook(IReadOnlyList<Unit> members, SynergyId synergyId)
         {
             _members = new HashSet<Unit>(members);
-            _sourceId = sourceId;
+            _sourceId = (int)synergyId;
         }
 
         public void OnBattleStart(BattleContext ctx) { }

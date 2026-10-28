@@ -19,8 +19,8 @@ namespace AutoChess.Tests
                 CritChance = 0, CritDamage = 50,
             };
 
-        /// <summary>注入表：N 个棋子按 tagsPerId 给标签（面板统一）——族 id 直接用开发计划 #22 的 1~6。</summary>
-        private static CharacterTable Table(int maxHp, float atkIv, float moveIv, int atk, params int[][] tagsPerId)
+        /// <summary>注入表：N 个棋子按 tagsPerId 给标签（面板统一）——标签用 SynergyId enum（六族即 #22 的 1~6，P3-5）。</summary>
+        private static CharacterTable Table(int maxHp, float atkIv, float moveIv, int atk, params SynergyId[][] tagsPerId)
         {
             var defs = new List<CharacterDef>();
             for (int i = 0; i < tagsPerId.Length; i++)
@@ -54,8 +54,8 @@ namespace AutoChess.Tests
             var table = CharacterTable.Default;
             Assert.AreEqual(18, table.Count, "#22②：18 种棋子");
 
-            var perTribe = new Dictionary<int, int>();
-            var lowCostPerTribe = new Dictionary<int, int>();   // 1~3 费成员数
+            var perTribe = new Dictionary<SynergyId, int>();
+            var lowCostPerTribe = new Dictionary<SynergyId, int>();   // 1~3 费成员数
             foreach (var def in table.All)
             {
                 Assert.AreEqual(2, def.Synergies.Length, $"棋子{def.Id}（{def.DisplayName}）必须双标签");
@@ -72,7 +72,7 @@ namespace AutoChess.Tests
             }
 
             Assert.AreEqual(36, perTribe.Values.Sum(), "18 × 2 = 36 个标签");
-            foreach (int tribe in new[] { 1, 2, 3, 4, 5, 6 })
+            foreach (SynergyId tribe in new[] { SynergyId.Brute, SynergyId.Bulwark, SynergyId.Arcane, SynergyId.Ranger, SynergyId.Shadow, SynergyId.Crown })
             {
                 Assert.AreEqual(6, perTribe[tribe], $"族 {tribe} 必须正好 6 人");
                 Assert.GreaterOrEqual(lowCostPerTribe[tribe], 4, $"族 {tribe} 的 1~3 费成员 ≥4（低费流不开 4 费凑 4 档）");
@@ -99,13 +99,27 @@ namespace AutoChess.Tests
             Assert.AreEqual(6, t.All.Count, "#22①：六族");
             for (int id = 1; id <= 6; id++)
             {
-                var def = t.Get(id);
-                Assert.AreEqual(id, def.Id);
+                var def = t.Get((SynergyId)id);
+                Assert.AreEqual((SynergyId)id, def.Id);
                 Assert.AreEqual(3, def.Tiers.Length, $"族 {id} 档位 2/4/6 三档");
                 Assert.AreEqual(2, def.Tiers[0].Count);
                 Assert.AreEqual(4, def.Tiers[1].Count);
                 Assert.AreEqual(6, def.Tiers[2].Count);
             }
+        }
+
+        [Test]
+        public void SynergyId_EnumValues_LockedToWireNumbers()
+        {
+            // enum 数值是线格式契约：它同时是 ModSourceId 羁绊号段里的来源 id（D2-9），
+            // 也是将来配置/存档的数值口径——改值 = 破坏号段纪律与旧数据，锁死防手滑
+            Assert.AreEqual(0, (int)SynergyId.None);
+            Assert.AreEqual(1, (int)SynergyId.Brute);
+            Assert.AreEqual(2, (int)SynergyId.Bulwark);
+            Assert.AreEqual(3, (int)SynergyId.Arcane);
+            Assert.AreEqual(4, (int)SynergyId.Ranger);
+            Assert.AreEqual(5, (int)SynergyId.Shadow);
+            Assert.AreEqual(6, (int)SynergyId.Crown);
         }
 
         [Test]
@@ -117,24 +131,24 @@ namespace AutoChess.Tests
             Assert.Throws<ArgumentNullException>(() => new SynergyTable(null));
             Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // Id 重复
             {
-                new SynergyDef(1, "甲", new[] { tier2 }),
-                new SynergyDef(1, "乙", new[] { tier2 }),
+                new SynergyDef(SynergyId.Brute, "甲", new[] { tier2 }),
+                new SynergyDef(SynergyId.Brute, "乙", new[] { tier2 }),
             }));
-            Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // Id 越出羁绊号段
+            Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // enum 成员值越出羁绊号段
             {
-                new SynergyDef(ModSourceId.EquipmentBase, "越段", new[] { tier2 }),
+                new SynergyDef((SynergyId)ModSourceId.EquipmentBase, "越段", new[] { tier2 }),
             }));
-            Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // Id 0 = 非法
+            Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // Id None = 非法
             {
-                new SynergyDef(0, "零", new[] { tier2 }),
+                new SynergyDef(SynergyId.None, "零", new[] { tier2 }),
             }));
             Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // 档位不升序
             {
-                new SynergyDef(1, "乱序", new[] { tier4, tier2 }),
+                new SynergyDef(SynergyId.Brute, "乱序", new[] { tier4, tier2 }),
             }));
             Assert.Throws<ArgumentException>(() => new SynergyTable(new[]   // 空档（无任何效果）
             {
-                new SynergyDef(1, "空档", new[] { new SynergyTierDef(2, "z") }),
+                new SynergyDef(SynergyId.Brute, "空档", new[] { new SynergyTierDef(2, "z") }),
             }));
         }
 
@@ -145,7 +159,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(100, 1f, 1f, 10, new[] { 5 }, new[] { 5 }, new[] { 1 });   // 两个暗影标签 + 一个蛮兽标签
+            var chars = Table(100, 1f, 1f, 10, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Brute });   // 两个暗影标签 + 一个蛮兽标签
             var sys = NewSynergy(chars, bus);
 
             var u1 = Place(bus, board, 1, 1, true, new Pos(0, 0), Stats(100, 10));   // 暗影标签
@@ -165,7 +179,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(100, 1f, 1f, 10, new[] { 2 }, new[] { 2 }, new[] { 2 });   // 三个铁壁标签
+            var chars = Table(100, 1f, 1f, 10, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark });   // 三个铁壁标签
             var sys = NewSynergy(chars, bus);
 
             var t1 = Place(bus, board, 1, 1, true, new Pos(0, 0), Stats(100, 10));
@@ -188,7 +202,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(100, 1f, 1f, 100, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 });   // 4 蛮兽
+            var chars = Table(100, 1f, 1f, 100, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute });   // 4 蛮兽
             var sys = NewSynergy(chars, bus);
             var units = new List<Unit>();
             for (int i = 0; i < 4; i++)
@@ -209,7 +223,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(100, 1f, 1f, 100, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 });
+            var chars = Table(100, 1f, 1f, 100, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute });
             var sys = NewSynergy(chars, bus);
             var units = new List<Unit>();
             for (int i = 0; i < 4; i++)
@@ -231,8 +245,8 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var chars = Table(100, 1f, 1f, 10,
-                new[] { 3 }, new[] { 3 }, new[] { 3 }, new[] { 3 }, new[] { 3 }, new[] { 3 },   // 6 秘法
-                new int[0]);                                                                     // 1 个无标签
+                new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane },   // 6 秘法
+                new SynergyId[0]);                                                                     // 1 个无标签
             var sys = NewSynergy(chars, bus);
             var roster = new List<Unit>();
             for (int i = 0; i < 6; i++)
@@ -263,7 +277,7 @@ namespace AutoChess.Tests
             var events = new List<SynergiesChangedEvent>();
             bus.Subscribe<SynergiesChangedEvent>(e => events.Add(e));
 
-            var chars = Table(100, 1f, 1f, 10, new[] { 2 }, new[] { 2 });   // 2 铁壁
+            var chars = Table(100, 1f, 1f, 10, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark });   // 2 铁壁
             var sys = NewSynergy(chars, bus);
             var u1 = Place(bus, board, 1, 1, true, new Pos(0, 0), Stats(100, 10));
             var u2 = Place(bus, board, 2, 2, true, new Pos(1, 0), Stats(100, 10));
@@ -273,7 +287,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(1, events.Count, "首算：从无到有 → 发");
             var snap = events[0].Snapshot;
             Assert.AreEqual(6, snap.Length, "快照逐族一行");
-            Assert.AreEqual(2, snap[1].SynergyId);
+            Assert.AreEqual(SynergyId.Bulwark, snap[1].SynergyId);
             Assert.AreEqual(2, snap[1].Count);
             Assert.AreEqual(0, snap[1].TierIndex);
             Assert.IsNotNull(snap[1].TierDesc);
@@ -296,7 +310,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(200, 1f, 1f, 50, new[] { 5 }, new[] { 5 });   // 2 暗影：atk 50
+            var chars = Table(200, 1f, 1f, 50, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow });   // 2 暗影：atk 50
             var sys = NewSynergy(chars, bus);
 
             var a = Place(bus, board, 1, 1, true, new Pos(1, 1), Stats(200, 50));   // 暗影 A：离敌人最近（会被打缺血）
@@ -323,7 +337,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(200, 2f, 1f, 100, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 });   // 4 暗影
+            var chars = Table(200, 2f, 1f, 100, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow });   // 4 暗影
             var sys = NewSynergy(chars, bus);
 
             // 杀手 K 近战贴脸（interval 2 秒 → 60 tick 首击），敌人先手把 K 打缺血，其余暗影还在走路
@@ -358,7 +372,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(200, 1f, 1f, 100, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 });   // 6 暗影
+            var chars = Table(200, 1f, 1f, 100, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow });   // 6 暗影
             var sys = NewSynergy(chars, bus);
 
             // 杀手 K：interval 0.5 秒（15 tick 首击，早于所有人）+ 离 D2 最近（会被 D2 打缺血）
@@ -400,8 +414,8 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             // 6 铁壁（含 T）+ 1 个无标签 N；覆盖制 + 完整效果集：6 档条目自带护甲 +20 → 减伤与抗性串联结算
             var chars = Table(1000, 2f, 1f, 5,
-                new[] { 2 }, new[] { 2 }, new[] { 2 }, new[] { 2 }, new[] { 2 }, new[] { 2 },
-                new int[0]);
+                new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark }, new[] { SynergyId.Bulwark },
+                new SynergyId[0]);
             var sys = NewSynergy(chars, bus);
 
             var t = Place(bus, board, 1, 1, true, new Pos(3, 2), Stats(1000, 5, atkIv: 2f));   // 铁壁 T：E2 的目标
@@ -435,7 +449,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var chars = Table(1000, 1f, 1f, 10, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 });   // 6 蛮兽
+            var chars = Table(1000, 1f, 1f, 10, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute });   // 6 蛮兽
             var sys = NewSynergy(chars, bus);
 
             var a = Place(bus, board, 1, 1, true, new Pos(0, 0), Stats(1000, 10));
@@ -478,9 +492,9 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var chars = Table(100, 1f, 1f, 10,
-                new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 }, new[] { 1 },       // 6 蛮兽
-                new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 }, new[] { 5 },       // 6 暗影
-                new[] { 3 }, new[] { 3 });                                                           // 2 秘法（2 档无钩子）
+                new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute }, new[] { SynergyId.Brute },       // 6 蛮兽
+                new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow }, new[] { SynergyId.Shadow },       // 6 暗影
+                new[] { SynergyId.Arcane }, new[] { SynergyId.Arcane });                                                           // 2 秘法（2 档无钩子）
             var sys = NewSynergy(chars, bus);
             var roster = new List<Unit>();
             for (int id = 1; id <= 14; id++)

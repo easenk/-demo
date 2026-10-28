@@ -76,40 +76,51 @@ namespace AutoChess.Game
         /// 面板数值 = 第一版锚点，阶段3 平衡期连千场压测统一重定。
         /// 蓝条数据纪律（批次5.5）：3 费+棋子配 MaxMana>0（1~2 费恒 0 = 无蓝条单位）——
         /// 这是表数据纪律，不写 if(cost) 进战斗循环。
+        /// 职业与技能标注（阶段3 批次1，决策 #22⑥）：每棋子一个职业（enum，回蓝速率轴）
+        /// + 可选技能 id（int——开放内容表）。族标签同批 enum 化（SynergyId，P3-5）。
         /// </summary>
         private static CharacterDef[] BuildDefaultDefs()
         {
             return new[]
             {
-                Def( 1, "野猪武士",   1, new[] { 1, 2 },  60, 12, 35, 25, 1, 1.1f, 1.0f),
-                Def( 2, "兽人投矛手", 1, new[] { 1, 4 },  55, 14, 25, 20, 2, 1.2f, 1.0f),
-                Def( 3, "民兵",       1, new[] { 2, 6 },  65, 11, 30, 30, 1, 1.2f, 1.0f),
-                Def( 4, "巫术学徒",   1, new[] { 3, 5 },  45,  9, 20, 25, 2, 1.4f, 1.0f),
-                Def( 5, "魔弹射手",   1, new[] { 3, 4 },  45, 13, 20, 20, 3, 1.3f, 1.1f),
+                //  id  名字        费  族标签                              职业            技能  血   攻   甲  法抗 射程 攻间隔 移间隔 蓝上限
+                Def( 1, "野猪武士",   1, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Tank,     0,  60, 12, 35, 25, 1, 1.1f, 1.0f),
+                Def( 2, "兽人投矛手", 1, new[] { SynergyId.Brute, SynergyId.Ranger },   RoleId.Marksman, 0,  55, 14, 25, 20, 2, 1.2f, 1.0f),
+                Def( 3, "民兵",       1, new[] { SynergyId.Bulwark, SynergyId.Crown },  RoleId.Tank,     0,  65, 11, 30, 30, 1, 1.2f, 1.0f),
+                Def( 4, "巫术学徒",   1, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     0,  45,  9, 20, 25, 2, 1.4f, 1.0f),
+                Def( 5, "魔弹射手",   1, new[] { SynergyId.Arcane, SynergyId.Ranger },  RoleId.Marksman, 0,  45, 13, 20, 20, 3, 1.3f, 1.1f),
 
-                Def( 6, "暗狼刺客",   2, new[] { 1, 5 },  70, 16, 25, 20, 1, 1.0f, 0.9f),
-                Def( 7, "符文守卫",   2, new[] { 2, 3 },  80, 13, 40, 35, 1, 1.3f, 1.0f),
-                Def( 8, "夜行狙击手", 2, new[] { 4, 5 },  55, 17, 20, 20, 3, 1.4f, 1.0f),
-                Def( 9, "弓卫侍从",   2, new[] { 6, 4 },  60, 15, 25, 25, 3, 1.2f, 1.0f),
-                Def(10, "随军牧师",   2, new[] { 6, 3 },  65, 12, 25, 30, 2, 1.3f, 1.0f),
+                Def( 6, "暗狼刺客",   2, new[] { SynergyId.Brute, SynergyId.Shadow },   RoleId.Assassin, 0,  70, 16, 25, 20, 1, 1.0f, 0.9f),
+                Def( 7, "符文守卫",   2, new[] { SynergyId.Bulwark, SynergyId.Arcane }, RoleId.Tank,     0,  80, 13, 40, 35, 1, 1.3f, 1.0f),
+                Def( 8, "夜行狙击手", 2, new[] { SynergyId.Ranger, SynergyId.Shadow },  RoleId.Marksman, 0,  55, 17, 20, 20, 3, 1.4f, 1.0f),
+                Def( 9, "弓卫侍从",   2, new[] { SynergyId.Crown, SynergyId.Ranger },   RoleId.Marksman, 0,  60, 15, 25, 25, 3, 1.2f, 1.0f),
+                Def(10, "随军牧师",   2, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     0,  65, 12, 25, 30, 2, 1.3f, 1.0f),
 
-                Def(11, "战团督军",   3, new[] { 1, 2 }, 150, 22, 45, 35, 1, 1.2f, 1.0f, maxMana: 60),
-                Def(12, "王家神射",   3, new[] { 4, 6 },  90, 26, 25, 25, 4, 1.3f, 1.0f, maxMana: 60),
-                Def(13, "战地法师",   3, new[] { 3, 5 },  85, 14, 25, 35, 2, 1.5f, 1.0f, maxMana: 60),
+                Def(11, "战团督军",   3, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Warrior,  1, 150, 22, 45, 35, 1, 1.2f, 1.0f, maxMana: 60),
+                Def(12, "王家神射",   3, new[] { SynergyId.Ranger, SynergyId.Crown },   RoleId.Marksman, 2,  90, 26, 25, 25, 4, 1.3f, 1.0f, maxMana: 60),
+                Def(13, "战地法师",   3, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     3,  85, 14, 25, 35, 2, 1.5f, 1.0f, maxMana: 60),
 
-                Def(14, "影刃",       4, new[] { 5, 4 }, 160, 32, 30, 25, 1, 0.9f, 0.8f, maxMana: 70),
-                Def(15, "铁甲巨兽",   4, new[] { 2, 1 }, 320, 24, 60, 50, 1, 1.6f, 1.1f, maxMana: 70),
-                Def(16, "宫廷大法师", 4, new[] { 6, 3 }, 150, 18, 30, 40, 3, 1.5f, 1.0f, maxMana: 70),
+                Def(14, "影刃",       4, new[] { SynergyId.Shadow, SynergyId.Ranger },  RoleId.Assassin, 4, 160, 32, 30, 25, 1, 0.9f, 0.8f, maxMana: 70),
+                Def(15, "铁甲巨兽",   4, new[] { SynergyId.Bulwark, SynergyId.Brute },  RoleId.Tank,     5, 320, 24, 60, 50, 1, 1.6f, 1.1f, maxMana: 70),
+                Def(16, "宫廷大法师", 4, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     6, 150, 18, 30, 40, 3, 1.5f, 1.0f, maxMana: 70),
 
-                Def(17, "圣殿之王",   5, new[] { 6, 2 }, 500, 35, 70, 60, 1, 1.4f, 1.0f, maxMana: 80),
-                Def(18, "魔渊兽王",   5, new[] { 5, 1 }, 450, 45, 50, 45, 1, 1.1f, 0.9f, maxMana: 80),
+                Def(17, "圣殿之王",   5, new[] { SynergyId.Crown, SynergyId.Bulwark },  RoleId.Tank,     7, 500, 35, 70, 60, 1, 1.4f, 1.0f, maxMana: 80),
+                Def(18, "魔渊兽王",   5, new[] { SynergyId.Shadow, SynergyId.Brute },   RoleId.Warrior,  8, 450, 45, 50, 45, 1, 1.1f, 0.9f, maxMana: 80),
             };
 
-            // 速记工厂：hp/atk/armor(双抗同值)/range/间隔 + 可选蓝条（3 费+）；
-            // 法强基准 100、暴击出厂基准 5/50（#10/#12 口径）；星级放大只动血/攻（阶段1 规则）
-            static CharacterDef Def(int id, string name, int cost, int[] synergies,
+            // 速记工厂：族标签/职业/技能 + hp/atk/armor(双抗同值)/range/间隔 + 可选蓝条（3 费+）；
+            // 法强基准 100、暴击出厂基准 5/50（#10/#12 口径）；星级放大只动血/攻（阶段1 规则）。
+            // 回蓝两维来自职业表（决策 #22⑥）：职业是回蓝速率轴的唯一真源——
+            // 无蓝条单位（MaxMana=0）不建回蓝账本，故两维恒 0。
+            static CharacterDef Def(int id, string name, int cost, SynergyId[] synergies, RoleId roleId, int skillId,
                 int hp, int atk, int armor, int mr, int range, float atkIv, float moveIv, int maxMana = 0)
-                => new CharacterDef(id, name, cost,
+            {
+                RoleDef role = RoleTable.Default.Get(roleId);
+                if (roleId != RoleId.None && role.Id == RoleId.None)
+                    throw new ArgumentException($"棋子 {id}「{name}」的职业 {roleId} 不在职业表里");
+
+                bool hasMana = maxMana > 0;
+                return new CharacterDef(id, name, cost,
                     new UnitStats
                     {
                         MaxHp = hp,
@@ -123,10 +134,11 @@ namespace AutoChess.Game
                         CritChance = 5,
                         CritDamage = 50,
                         MaxMana = maxMana,
-                        ManaPerHit = maxMana > 0 ? 10 : 0,
-                        ManaRegenPerSecond = maxMana > 0 ? 2 : 0,
+                        ManaPerHit = hasMana ? role.ManaPerHit : 0,
+                        ManaRegenPerSecond = hasMana ? role.ManaRegenPerSecond : 0,
                     },
-                    synergies);
+                    synergies, roleId, skillId);
+            }
         }
     }
 }

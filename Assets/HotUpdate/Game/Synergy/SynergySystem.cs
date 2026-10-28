@@ -17,6 +17,8 @@ namespace AutoChess.Game
     ///   4) 快照：逐族记 SynergyInfo，与上次比 Count + TierIndex，有变化才广播 SynergiesChangedEvent。
     /// 战斗期间不重算（羁绊开战瞬间冻结——TFT 同款语义）；触发点全部在备战期操作（批次5 接线）+ EnterPrep 兜底自愈。
     /// 钩子注册走 RegisterBattleHooks（开战瞬间调用一次）。
+    /// SynergyId 是 enum（封闭集合，P3-5）：跨到 ModSourceId（int 号段）的边界处统一 (int) 强转——
+    /// D2-9"羁绊 id 即 SourceId"语义不变。
     /// </summary>
     public sealed class SynergySystem
     {
@@ -45,7 +47,7 @@ namespace AutoChess.Game
 
             // 1) 计数：仅场上、同 CharId 去重
             var counted = new HashSet<int>();
-            var counts = new Dictionary<int, int>();
+            var counts = new Dictionary<SynergyId, int>();
             var boardPlayers = new List<Unit>();
             board.CollectUnitsOnBoard(true, boardPlayers);
             foreach (var u in boardPlayers)
@@ -66,8 +68,8 @@ namespace AutoChess.Game
                 if (!u.IsPlayerSide) continue;
                 foreach (var def in _synergies.All)
                 {
-                    u.RemoveModifiersBySource(def.Id);
-                    u.RemoveModifiersBySource(BattleDynamicSourceBase + def.Id);
+                    u.RemoveModifiersBySource((int)def.Id);
+                    u.RemoveModifiersBySource(BattleDynamicSourceBase + (int)def.Id);
                 }
             }
 
@@ -140,7 +142,7 @@ namespace AutoChess.Game
             // 场上玩家单位按标签分桶（开战瞬间冻结的成员名单）
             var boardPlayers = new List<Unit>();
             board.CollectUnitsOnBoard(true, boardPlayers);
-            var membersBySynergy = new Dictionary<int, List<Unit>>();
+            var membersBySynergy = new Dictionary<SynergyId, List<Unit>>();
             foreach (var u in boardPlayers)
             {
                 var def = _characters.Get(u.CharId);
@@ -175,7 +177,7 @@ namespace AutoChess.Game
 
         // ── 内部 ──
 
-        private bool HasTag(Unit u, int synergyId)
+        private bool HasTag(Unit u, SynergyId synergyId)
         {
             var def = _characters.Get(u.CharId);
             if (def.Id == 0) return false;
@@ -184,11 +186,11 @@ namespace AutoChess.Game
             return false;
         }
 
-        /// <summary>表内模板盖族章（模板 SourceId 恒 0）。</summary>
-        private static StatModifier Stamp(StatModifier tmpl, int sourceId)
-            => new StatModifier(tmpl.Kind, tmpl.Op, tmpl.Value, sourceId);
+        /// <summary>表内模板盖族章（模板 SourceId 恒 0；族章 = enum 值强转 int 落 ModSourceId 号段，D2-9）。</summary>
+        private static StatModifier Stamp(StatModifier tmpl, SynergyId sourceId)
+            => new StatModifier(tmpl.Kind, tmpl.Op, tmpl.Value, (int)sourceId);
 
-        private int FindTierIndex(int synergyId)
+        private int FindTierIndex(SynergyId synergyId)
         {
             if (_lastSnapshot == null) return -1;
             foreach (var info in _lastSnapshot)
