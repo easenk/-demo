@@ -29,6 +29,7 @@ namespace AutoChess.Game
         public int CharId { get; }             // 配置表引用，表现层靠它找 sprite/动画
         public bool IsPlayerSide { get; }
         public int Star { get; }
+        public int SkillId { get; }            // 技能表引用（批次2；0 = 无技能——"3 费+才有技能"是数据纪律，不写 if(cost)）
         public UnitStats Stats => _baseStats;  // 出厂面板（已按星级缩放），永不修改
 
         // ── 位置：唯一写者是 BoardData ──
@@ -42,7 +43,7 @@ namespace AutoChess.Game
         // ── 蓝条状态（批次5.5）：出生 0（起手蓝决策）；MaxMana=0 的单位连账本都不建 ──
         public int CurrentMana { get; private set; }
 
-        public Unit(int id, int charId, bool isPlayerSide, UnitStats stats, EventBus bus, int star = 1)
+        public Unit(int id, int charId, bool isPlayerSide, UnitStats stats, EventBus bus, int star = 1, int skillId = 0)
         {
             if (stats.MaxHp < 1)
                 throw new ArgumentOutOfRangeException(nameof(stats), "MaxHp 必须 ≥ 1");
@@ -53,6 +54,7 @@ namespace AutoChess.Game
             CharId = charId;
             IsPlayerSide = isPlayerSide;
             Star = star;
+            SkillId = skillId;
             _baseStats = stats;
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _maxHp = stats.MaxHp;
@@ -238,6 +240,20 @@ namespace AutoChess.Game
                 _manaCredit -= GameConst.TicksPerSecond;
                 AddMana(1);
             }
+        }
+
+        /// <summary>
+        /// 施法后清蓝（批次2）：施法消耗 = 蓝条上限（MaxMana 即施法阈值，2026-10-16 拍板），施法后清零。
+        /// 清零也是"真发生的事实"→ 广播（供蓝条 UI 归零）；无蓝条 / 已是 0 静默。
+        /// 保留型技能（SkillDef.KeepManaAfterCast = true）不调它——v1 表全 false。
+        /// </summary>
+        public void ClearMana()
+        {
+            int max = EffectiveStats.MaxMana;
+            if (max <= 0) return;
+            if (CurrentMana == 0) return;
+            CurrentMana = 0;
+            _bus.Publish(new ManaChangedEvent(Id, 0, max));
         }
 
         // ── 内部 ──

@@ -196,7 +196,7 @@ namespace AutoChess.Game
             LastBattleSeed = (uint)_random.NextInt(1, int.MaxValue);
 
             // 5. 每场一个新 CombatSystem（目标锁定/进度条账本随构造新生，绝不跨场残留）
-            _combat = new CombatSystem(_board, _bus, LastBattleSeed);
+            _combat = new CombatSystem(_board, _bus, LastBattleSeed, skills: _tables.Skills);   // 批次2：技能表注入（null = 全场不施法）
 
             // 6. 羁绊钩子开战注册（#22④ 唯一入口；快照激活档 + 开战瞬间冻结的成员名单）
             _synergy.RegisterBattleHooks(_combat, _board);
@@ -314,7 +314,7 @@ namespace AutoChess.Game
             CharacterDef def = _shop.Buy(slotIndex);
             if (def.Id == 0) return false;                     // 格号越界/空格/钱不够：商店已纯拒绝
 
-            var u = new Unit(_ids.Next(), def.Id, true, def.StatsForStar(1), _bus, 1);
+            var u = new Unit(_ids.Next(), def.Id, true, def.StatsForStar(1), _bus, 1, def.SkillId);
             _bench.Add(u);
             _bus.Publish(new UnitAcquiredEvent(u.Id, u.CharId, u.Star));
 
@@ -493,7 +493,7 @@ namespace AutoChess.Game
 
             foreach (EnemySpawn spawn in encounter.Spawns)
             {
-                var u = new Unit(_ids.Next(), 0, false, spawn.Stats, _bus, 1);
+                var u = new Unit(_ids.Next(), 0, false, spawn.Stats, _bus, 1, spawn.SkillId);
                 if (_board.TryPlace(u, spawn.Cell))
                 {
                     _enemyRoster.Add(u);
@@ -599,7 +599,7 @@ namespace AutoChess.Game
 
                 // 4) 高星单位在锚点格位/名单原位置替换；合成体满血出厂、新星面板
                 int newStar = star + 1;
-                var merged = new Unit(_ids.Next(), charId, true, def.StatsForStar(newStar), _bus, newStar);
+                var merged = new Unit(_ids.Next(), charId, true, def.StatsForStar(newStar), _bus, newStar, def.SkillId);
                 if (anchorOnBoard)
                 {
                     if (!_board.Remove(anchor))

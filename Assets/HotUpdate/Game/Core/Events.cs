@@ -1,7 +1,7 @@
 namespace AutoChess.Game
 {
     // ─────────────────────────────────────────────────────
-    // 阶段1 战斗事件（10 条）+ 蓝条事件（批次5.5，1 条）+ 阶段2 事件（批次1 起）。
+    // 阶段1 战斗事件（10 条）+ 蓝条事件（批次5.5，1 条）+ 阶段2 事件（批次1 起）+ 施法事件（阶段3 批次2）。
     // 纪律（设计文档 2.6）：
     //  · 全部 struct —— 广播零装箱（EventBus 的 where T : struct 强制）
     //  · 只带"事实快照"与 int id，不带对象引用 —— 表现层拿 id 查自己的视图表
@@ -62,6 +62,24 @@ namespace AutoChess.Game
         public UnitAttackedEvent(int attackerId, int targetId, bool isCrit)
         {
             AttackerId = attackerId;
+            TargetId = targetId;
+            IsCrit = isCrit;
+        }
+    }
+
+    /// <summary>CombatSystem 施法时广播（批次2）——先于目标的受伤事件（与 UnitAttackedEvent 同序：先出手、后见血）。
+    /// 伤害本身经 UnitDamagedEvent 播报（技能与普攻走同一条伤害管线）；IsCrit 只有物理技能可能为 true（决策 #10）。</summary>
+    public struct SkillCastEvent
+    {
+        public int CasterId;
+        public int SkillId;
+        public int TargetId;
+        public bool IsCrit;
+
+        public SkillCastEvent(int casterId, int skillId, int targetId, bool isCrit)
+        {
+            CasterId = casterId;
+            SkillId = skillId;
             TargetId = targetId;
             IsCrit = isCrit;
         }

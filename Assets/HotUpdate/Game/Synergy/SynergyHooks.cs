@@ -49,10 +49,15 @@ namespace AutoChess.Game
             stacks++;
             _stacks[attacker] = stacks;
 
-            // 更新层：先摘旧的那条（按值），再挂新的——独立号段保证只摘叠层、不碰档位修饰器
+            // 更新层：先摘旧的那条（按值），再挂新的
             if (_applied.TryGetValue(attacker, out var old))
                 attacker.RemoveModifier(old);
-            var fresh = new StatModifier(StatKind.AttackInterval, StatOp.Percent, IntervalPercentPerStack * stacks, _sourceId);
+            // 叠层条盖独立号段 100+族 id（2026-10-29 用户拍板修正）：与档位条（族 id 本身）四字段永不相等，
+            // 按值摘旧层永不误摘档位条；重算摘账两段一刀本就同时清两段。
+            // 修正前误盖族号：叠到第 5 层起"撕旧层"会误撕先贴的档位条、旧层留成幽灵——
+            // 数值因一换一恒不变（幽灵值恒等于被撕档位值），但账本与注释不符
+            var fresh = new StatModifier(StatKind.AttackInterval, StatOp.Percent,
+                IntervalPercentPerStack * stacks, SynergySystem.BattleDynamicSourceBase + _sourceId);
             attacker.AddModifier(fresh);
             _applied[attacker] = fresh;
         }

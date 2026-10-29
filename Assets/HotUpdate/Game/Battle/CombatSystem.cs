@@ -9,6 +9,13 @@ namespace AutoChess.Game
     /// 测试用 for 循环狂调（一秒几百局）——同一份代码两种人生。
     /// 一个 tick 内部的执行顺序恒定（5.4），测试焊死。
     ///
+    /// 批次2（阶段3）：施法循环（阶段3-接口设计 4.3）——单位行动位最前判定
+    /// "蓝满 + 有技能 + 目标在施法距离内" → 本行动位施法（替代普攻/移动、不充条）；
+    /// 施法失败（无目标/超距）不扣蓝、走原普攻/移动逻辑。技能伤害走 DamageFormula 同一条乘区管线，
+    /// 且吃出手前钩子的四个改伤乘区（与普攻共享）；OnBeforeAttack/OnDamaged/OnDeath 对施法照常触发，
+    /// OnAfterAttack（普攻收尾：吸血/叠层）不对施法触发——暗影吸血/蛮兽叠层按词条口径是普攻专属。
+    /// 回归红线：不传技能表（skills = null）或单位无技能时，与批次1 行为逐字节一致。
+    ///
     /// 批次3：战斗钩子骨架（阶段2-接口设计 5.2）——六挂点 + 按来源注册注销。
     /// 回归红线：无钩子注册时与阶段1 行为逐字节一致（掷骰序列/事件流/TickCount/RollCount 不变）——
     /// 所有分发先查 _hooks.Count，空表零副作用；CombatRules 本批不动（转钩子实现是阶段3 的事）。
@@ -19,6 +26,7 @@ namespace AutoChess.Game
         private readonly EventBus _bus;
         private readonly GameRandom _random;
         private readonly CombatRules _rules;
+        private readonly SkillTable _skills;   // 批次2：null = 无技能表——蓝满也永不施法（测试/未注入配置的兜底）
 
         private readonly Dictionary<Unit, Unit> _lockedTarget = new Dictionary<Unit, Unit>(); // 目标锁定到死
         private readonly Dictionary<Unit, float> _attackBar = new Dictionary<Unit, float>();  // 攻击进度条
@@ -38,12 +46,13 @@ namespace AutoChess.Game
         private bool _ended;    // BattleEndedEvent 已发的执行印记（全程只发一次）
         private bool _started;  // OnBattleStart 已触发（首 tick 最前，一场只一次）
 
-        public CombatSystem(BoardData board, EventBus bus, uint seed = 0u, CombatRules rules = null)
+        public CombatSystem(BoardData board, EventBus bus, uint seed = 0u, CombatRules rules = null, SkillTable skills = null)
         {
             _board = board ?? throw new ArgumentNullException(nameof(board));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _random = new GameRandom(seed);   // 唯一随机源；种子注入（铁律4）
             _rules = rules ?? new CombatRules();
+            _skills = skills;                 // null = 无技能表：蓝满也永不施法
             _context = new BattleContext(this, _board, _random);
         }
 
@@ -143,6 +152,10 @@ namespace AutoChess.Game
             {
                 Unit u = roster[i];
                 if (!u.IsAlive || !u.IsOnBoard) continue;   // 本 tick 早些时候阵亡/已清场 → 跳过
+
+                // ★施法判定（批次2）：蓝满 + 有技能 + 目标在施法距离内 → 本行动位施法——
+                //   替代本次普攻/移动（不充条）；失败（无目标/超距）不扣蓝，落回原逻辑
+                if (TryPerformCast(u)) continue;
 
                 Unit target = GetLockedTarget(u);
                 if (target == null || !target.IsAlive)       // 目标锁定到死：死了才重新索敌
@@ -269,19 +282,109 @@ namespace AutoChess.Game
             }
 
             if (!target.IsAlive)
+                HandleKill(attacker, target);
+        }
+
+        // ─────────────────────── 施法（批次2，阶段3-接口设计 4.3） ───────────────────────
+
+        /// <summary>
+        /// 行动位施法判定：蓝满（CurrentMana == MaxMana，AddMana 已钳上限）+ 技能表里查得到技能
+        /// + 最近敌人在施法距离内 → 施法并返回 true（本行动位被施法占用）。
+        /// 任一条件不满足 → false（不扣蓝，落回普攻/移动逻辑）。
+        /// 目标选择按技能表 TargetRule 独立扫描（v1 只有 NearestEnemy，与索敌同套行主序规则），
+        /// 不读不写普攻的目标锁定账本；无随机（暴击掷骰在 PerformCast 内、出手才掷）。
+        /// </summary>
+        private bool TryPerformCast(Unit u)
+        {
+            if (_skills == null) return false;
+            int maxMana = u.EffectiveStats.MaxMana;
+            if (maxMana <= 0 || u.CurrentMana < maxMana) return false;
+
+            SkillDef skill = _skills.Get(u.SkillId);
+            if (skill.Id == 0) return false;
+            if (skill.TargetRule != SkillTargetRule.NearestEnemy) return false;   // v1 唯一目标规则
+
+            Unit target = AcquireNearestEnemy(u);
+            if (target == null) return false;
+            if (u.Pos.ChebyshevTo(target.Pos) > skill.CastRange) return false;    // 超距：不施法不扣蓝
+
+            PerformCast(u, target, skill);
+            return true;
+        }
+
+        /// <summary>
+        /// 施法一击：掷骰（物理技能才掷、暴击率 0 不掷——D9 口径延伸）→ 出手前钩子（与普攻共享唯一改伤挂点）
+        /// → 广播 SkillCastEvent → DamageFormula 结算 → 受伤后/死亡钩子 → 施法后清蓝。
+        /// 与普攻的差异（口径，测试焊死）：不回蓝（命中回蓝是普攻权益）、不触发 OnAfterAttack
+        /// （普攻收尾钩子：吸血/叠层按词条口径是普攻专属）、不吃 CombatRules 普攻吸血。
+        /// </summary>
+        private void PerformCast(Unit caster, Unit target, SkillDef skill)
+        {
+            bool isCrit = false;
+            if (SkillDamage.CanCrit(skill) && caster.EffectiveStats.CritChance > 0f)
             {
-                // ★死亡时钩子：死者/击杀者/死亡格——尸体尚未清出、格位还在（钩子还能读到最后一格）
-                if (_hooks.Count > 0)
-                    DispatchOnDeath(new DeathInfo { Dead = target, Killer = attacker, Cell = target.Pos });
+                _rollCount++;
+                isCrit = _random.RollPercent(caster.EffectiveStats.CritChance);
+            }
 
-                // 死者立即清出棋盘（尸体让格），然后触发击杀回复
-                _board.Remove(target);
+            // ★出手前钩子：技能与普攻共享唯一可改伤挂点（穿透/增伤/减伤；暴击已掷定不改，D2-3）
+            var draft = new AttackDraft { Attacker = caster, Target = target, IsCrit = isCrit };
+            if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
 
-                if (_rules.PlayerKillHealPercent > 0f && attacker.IsPlayerSide && attacker.IsAlive)
+            // 时序契约：先出手（SkillCast），后见血（Damaged/Died 在 TakeDamage 内）
+            _bus.Publish(new SkillCastEvent(caster.Id, skill.Id, target.Id, isCrit));
+
+            int applied = CastDamage(caster, target, skill, isCrit, ToExtras(in draft));
+
+            // ★受伤后钩子（守方视角）：技能伤害同样是"承受了这次伤害"（致死也发）
+            if (_hooks.Count > 0)
+                DispatchOnDamaged(new DamageResult
                 {
-                    int heal = GameMath.RoundToInt(attacker.EffectiveStats.MaxHp * _rules.PlayerKillHealPercent / 100f);
-                    if (heal > 0) attacker.Heal(heal);
-                }
+                    Target = target, Source = caster,
+                    Damage = applied, CurrentHp = target.CurrentHp, Died = !target.IsAlive,
+                });
+
+            if (!target.IsAlive)
+                HandleKill(caster, target);
+
+            // 施法后清零（保留型 KeepManaAfterCast = true 不清——v1 表全 false；true = 每个行动位连续施法）
+            if (!skill.KeepManaAfterCast) caster.ClearMana();
+        }
+
+        /// <summary>技能伤害：SkillDamage 算基础值（表数据 + 系数段）→ DamageFormula 走与普攻相同的乘区管线。</summary>
+        private int CastDamage(Unit caster, Unit target, SkillDef skill, bool isCrit, in AttackExtras extras)
+        {
+            DamageInput input = new DamageInput
+            {
+                Type = skill.DamageType,
+                BaseDamage = SkillDamage.Compute(skill, caster.Star, caster.EffectiveStats),
+                CanCrit = SkillDamage.CanCrit(skill),
+                Attacker = caster.EffectiveStats,
+                Defender = target.EffectiveStats,
+                IsCrit = isCrit,
+                FlatPen = extras.FlatPen,
+                PercentPen = extras.PercentPen,
+                DamageAmpPercent = extras.DamageAmpPercent,
+                DamageReductionPercent = extras.DamageReductionPercent,
+            };
+            int final = DamageFormula.Compute(input);
+            return target.TakeDamage(final, caster);
+        }
+
+        /// <summary>击杀收尾（普攻/施法共用）：死亡钩子 → 清出棋盘（尸体让格）→ 击杀回复（CombatRules，默认 0）。</summary>
+        private void HandleKill(Unit attacker, Unit target)
+        {
+            // ★死亡时钩子：死者/击杀者/死亡格——尸体尚未清出、格位还在（钩子还能读到最后一格）
+            if (_hooks.Count > 0)
+                DispatchOnDeath(new DeathInfo { Dead = target, Killer = attacker, Cell = target.Pos });
+
+            // 死者立即清出棋盘（尸体让格），然后触发击杀回复
+            _board.Remove(target);
+
+            if (_rules.PlayerKillHealPercent > 0f && attacker.IsPlayerSide && attacker.IsAlive)
+            {
+                int heal = GameMath.RoundToInt(attacker.EffectiveStats.MaxHp * _rules.PlayerKillHealPercent / 100f);
+                if (heal > 0) attacker.Heal(heal);
             }
         }
 

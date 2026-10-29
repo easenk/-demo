@@ -18,7 +18,7 @@ namespace AutoChess.Tests
     ///  · 正确性论证（归纳）：状态同步 → 脚本读到的状态相同 → 决策器消耗节奏相同 → 操作相同 → 状态继续同步
     ///
     /// 分节契约：
-    ///  · 主验收（20 局）：事件流逐条一致（29 种事件全捕获、每条拼全字段；先整体快速比对、失败定位首处差异）
+    ///  · 主验收（20 局）：事件流逐条一致（30 种事件全捕获、每条拼全字段；先整体快速比对、失败定位首处差异）
     ///    + 终局五元组一致（血/金/回合/评级/已选策略清单）+ 每局 RunOver（防"卡 Settlement 的假完整"）
     ///    + 事件流规模下限（防"零事件假绿"）
     ///  · 操作覆盖（20 局累计）：买/刷/卖/摆位/上下场/捡矿/选策略/合成/买经验/羁绊激活/晶矿掉落/策略弹选
@@ -29,7 +29,7 @@ namespace AutoChess.Tests
     {
         // ─────────────────────── 测试基建：事件全捕获 ───────────────────────
 
-        /// <summary>29 种事件全订阅，每条拼全字段成一行（int/bool/枚举全可字符串化——无浮点，逐字节可比）。</summary>
+        /// <summary>30 种事件全订阅，每条拼全字段成一行（int/bool/枚举全可字符串化——无浮点，逐字节可比）。</summary>
         private sealed class EventRecorder
         {
             public readonly List<string> Log = new List<string>(8192);
@@ -43,6 +43,7 @@ namespace AutoChess.Tests
                 bus.Subscribe<UnitMovedEvent>(e => Add($"Moved|{e.UnitId}|{e.FromCell.X},{e.FromCell.Y}|{e.ToCell.X},{e.ToCell.Y}"));
                 bus.Subscribe<UnitRemovedEvent>(e => Add($"Removed|{e.UnitId}|{e.Cell.X},{e.Cell.Y}"));
                 bus.Subscribe<UnitAttackedEvent>(e => Add($"Attacked|{e.AttackerId}|{e.TargetId}|{e.IsCrit}"));
+                bus.Subscribe<SkillCastEvent>(e => Add($"SkillCast|{e.CasterId}|{e.SkillId}|{e.TargetId}|{e.IsCrit}"));
                 bus.Subscribe<UnitDamagedEvent>(e => Add($"Damaged|{e.UnitId}|{e.SourceUnitId}|{e.FinalDamage}|{e.CurrentHp}"));
                 bus.Subscribe<UnitDiedEvent>(e => Add($"Died|{e.UnitId}|{e.Cell.X},{e.Cell.Y}"));
                 bus.Subscribe<UnitHealedEvent>(e => Add($"Healed|{e.UnitId}|{e.Amount}|{e.CurrentHp}"));

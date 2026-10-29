@@ -25,13 +25,18 @@ namespace AutoChess.Game
         /// <summary>怪物强度等级（决策 #19③/#20③：战绩页展示字段；普通关填表纪律 = 回合越靠后指标越高）。</summary>
         public readonly int PowerLevel;
 
-        public EnemySpawn(string displayName, UnitStats stats, Pos cell, int oreTier, int powerLevel)
+        /// <summary>技能 id（批次2：0 = 无技能；需配合 Stats.MaxMana&gt;0 才会施法——
+        /// 敌方 CritChance=0、MaxMana=0 仍是表数据纪律 D2-7，想要会施法的怪 = 改表，不写死代码）。</summary>
+        public readonly int SkillId;
+
+        public EnemySpawn(string displayName, UnitStats stats, Pos cell, int oreTier, int powerLevel, int skillId = 0)
         {
             DisplayName = displayName ?? "";
             Stats = stats;
             Cell = cell;
             OreTier = oreTier;
             PowerLevel = powerLevel;
+            SkillId = skillId;
         }
     }
 
@@ -113,6 +118,8 @@ namespace AutoChess.Game
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」OreTier 必须为 0~3");
                 if (s.PowerLevel < 1)
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」PowerLevel 必须 ≥ 1");
+                if (s.SkillId < 0)
+                    throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」SkillId 不能为负（0 = 无技能）");
                 if (s.Cell.X < 0 || s.Cell.X >= GameConst.BoardWidth ||
                     s.Cell.Y < 0 || s.Cell.Y >= GameConst.BoardHeight)
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」摆位越界：({s.Cell.X}, {s.Cell.Y})");
@@ -245,8 +252,8 @@ namespace AutoChess.Game
         /// <summary>占位怪速记工厂：hp/atk/armor（armor 同时填双抗），攻速/移速/挡位/强度用可选参数覆盖。</summary>
         private static EnemySpawn E(string name, int hp, int atk, int armor, Pos cell,
             float attackInterval = TrashAttackInterval, float moveInterval = TrashMoveInterval,
-            int oreTier = 0, int powerLevel = 1)
-            => new EnemySpawn(name, Stats(hp, atk, armor, attackInterval, moveInterval), cell, oreTier, powerLevel);
+            int oreTier = 0, int powerLevel = 1, int skillId = 0)
+            => new EnemySpawn(name, Stats(hp, atk, armor, attackInterval, moveInterval), cell, oreTier, powerLevel, skillId);
 
         /// <summary>敌方默认面板：CritChance=0、MaxMana=0 是表数据纪律（D2-7）——不写死代码，改表即改行为。</summary>
         private static UnitStats Stats(int hp, int atk, int armor, float attackInterval, float moveInterval)

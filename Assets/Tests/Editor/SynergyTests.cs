@@ -484,6 +484,14 @@ namespace AutoChess.Tests
             for (int i = 10; i < intervals.Count; i++)
                 Assert.AreEqual(0.58f, intervals[i], 0.002f, "第 11 击起：10 层封顶（-42%）且此后稳定");
             Assert.AreEqual(0.58f, a.EffectiveStats.AttackInterval, 0.001f, "战斗中读：封顶值稳定");
+
+            // 签名契约（2026-10-29 拍板修正）：档位条签族号、叠层条签独立段（100+族号）——四字段永不相等，
+            // 按值摘旧层永不误摘档位条（修正前第 5 层起档位条被误摘、旧层留成值恰相等的幽灵）
+            var brute = (int)SynergyId.Brute;
+            var ivMods = a.Modifiers.Where(m => m.Kind == StatKind.AttackInterval).ToList();
+            Assert.AreEqual(2, ivMods.Count, "攻速维恰好两条：档位（-12%）+ 叠层（-30% 封顶）");
+            Assert.AreEqual(1, ivMods.Count(m => m.SourceId == brute), "档位条签族号 1");
+            Assert.AreEqual(1, ivMods.Count(m => m.SourceId == SynergySystem.BattleDynamicSourceBase + brute), "叠层条签独立段 101");
         }
 
         [Test]
