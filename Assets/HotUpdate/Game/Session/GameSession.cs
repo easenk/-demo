@@ -71,6 +71,9 @@ namespace AutoChess.Game
         public const int BossHealFast = 35;
         public const int BossHealSlow = 10;
 
+        /// <summary>开局拆卸器数（2026-10-29 拍板：送 2 个；掉落来源 = 晶矿/策略，批次6 接入）。</summary>
+        public const int StartUnsmithTools = 2;
+
         private readonly EventBus _bus;
         private readonly GameRandom _random;      // 会话级随机源（商店/战斗种子/晶矿/策略共用一条流）
         private readonly GameTables _tables;
@@ -108,6 +111,9 @@ namespace AutoChess.Game
         private readonly List<(int SourceId, int HpLoss)> _activePolicyHpCosts = new List<(int, int)>();                        // 已选策略的战后扣血（Settle 每场消费：胜也扣，2026-10-27 拍板 A 案）
         private readonly List<(int SourceId, Func<IReadOnlyList<Unit>, IBattleHook> Factory)> _activePolicyHooks = new List<(int, Func<IReadOnlyList<Unit>, IBattleHook>)>();  // 已选策略的钩子工厂（每场 StartBattle 新造一只注册）
 
+        // ── 装备（批次3，决策 #12）：背包（穿戴中的实例在 Unit 的装备槽里，引用唯一归属） ──
+        private readonly Inventory _inventory = new Inventory();
+
         // ── 状态（private set：只有本类能改）──
 
         public GamePhase Phase { get; private set; }
@@ -138,6 +144,8 @@ namespace AutoChess.Game
         public bool HasPolicyChoice => _policyCandidates.Count > 0;           // 批次7：有待选策略（StartBattle 门禁源）
         public IReadOnlyList<int> PolicyCandidates => _policyCandidates;       // 批次7：候选策略 Id（弹窗渲染用）
         public IReadOnlyList<int> OwnedPolicyIds => _ownedPolicyIds;           // 批次7：已选策略 Id（战绩页画像字段之一，#19③）
+        public Inventory Inventory => _inventory;                               // 批次3：背包（写操作经本类门禁方法）
+        public int UnsmithToolCount => _inventory.ConsumableCount(ConsumableIds.UnsmithTool);   // 批次3：拆卸器持有数
 
         public GameSession(EventBus bus, uint seed = 0u, GameTables tables = null)
         {
@@ -160,6 +168,8 @@ namespace AutoChess.Game
         public bool StartRun()
         {
             if (Phase != GamePhase.PreRun) return false;
+            _inventory.AddConsumable(ConsumableIds.UnsmithTool, StartUnsmithTools);   // 开局送拆卸器（2026-10-29 拍板）
+            PublishInventoryChanged();
             Round = 1;
             EnterPrep();
             return true;
@@ -352,6 +362,19 @@ namespace AutoChess.Game
             int copies = CharacterDef.CopiesForStar(u.Star);
             for (int i = 0; i < copies; i++) _pool.Return(u.CharId);
 
+            // 装备全额返还背包（#12⑥）：身上 3 槽的实例全部回包（含已升级的大件）；
+            // 升级费不退——钱在升级时已花，卖价只按棋子算（防"升级→卖出"刷钱，#12⑥）
+            bool returnedGear = false;
+            for (int i = 0; i < Unit.EquipmentSlotCount; i++)
+            {
+                EquipmentInstance gear = u.EquipmentSlotsInternal[i];
+                if (gear == null) continue;
+                u.EquipmentSlotsInternal[i] = null;
+                _inventory.Add(gear);
+                returnedGear = true;
+            }
+            if (returnedGear) PublishInventoryChanged();
+
             int gold = def.SellPrice(u.Star);
             _eco.AddGold(gold);
             _bus.Publish(new UnitSoldEvent(u.Id, u.CharId, u.Star, gold));
@@ -397,6 +420,113 @@ namespace AutoChess.Game
             RecalculateBoardEffects();   // 下场：羁绊 + 策略修饰器捆绑重算（下场者被摘干净——"只有上战场的棋子才算"）
             return true;
         }
+
+        // ─────────────────────── 装备操作（批次3，决策 #12；全部仅 Prep） ───────────────────────
+
+        /// <summary>
+        /// 加一件装备进背包（发全局唯一实例号；失败返回 0 哨兵）。
+        /// 消费者 = 批次6 的晶矿/策略装备发放（#12⑧ 只给散件——发放侧编表纪律）；测试直接调。
+        /// 拒绝：无装备表（注入包未设）/ 表外 id。
+        /// </summary>
+        public int AddEquipment(int defId)
+        {
+            if (_tables.Equipment == null) return 0;          // 无装备表：纯拒绝
+            EquipmentDef def = _tables.Equipment.Get(defId);
+            if (def.Id == 0) return 0;                         // 表外 id
+
+            var item = new EquipmentInstance(_ids.Next(), defId);
+            _inventory.Add(item);
+            PublishInventoryChanged();
+            return item.InstanceId;
+        }
+
+        /// <summary>加拆卸器（发放口：批次6 的掉落来源接入；测试直接调）。非正数纯拒绝。</summary>
+        public bool AddUnsmithTools(int count)
+        {
+            if (count <= 0) return false;
+            _inventory.AddConsumable(ConsumableIds.UnsmithTool, count);
+            PublishInventoryChanged();
+            return true;
+        }
+
+        /// <summary>
+        /// 穿戴：背包实例 → 指定单位的指定空槽。拒绝矩阵（#12⑨ 纯拒绝四不动）：
+        /// 非备战期 / 无装备表 / 未知单位 / 槽号越界 / 背包无此实例 / 槽已占。
+        /// 目标可以是备战席单位（P3-2：穿着待命合法，但加成只挂场上——上场瞬间才生效）。
+        /// </summary>
+        public bool Equip(int unitId, int slotIndex, int instanceId)
+        {
+            if (Phase != GamePhase.Prep) return false;
+            if (_tables.Equipment == null) return false;
+            Unit u = FindPlayerUnit(unitId);
+            if (u == null) return false;
+            if (slotIndex < 0 || slotIndex >= Unit.EquipmentSlotCount) return false;
+            if (u.EquipmentSlotsInternal[slotIndex] != null) return false;   // 槽已占
+            EquipmentInstance item = _inventory.Find(instanceId);
+            if (item == null) return false;                                  // 不在背包（未知 id / 已穿在身上）
+
+            _inventory.Remove(instanceId);
+            u.EquipmentSlotsInternal[slotIndex] = item;
+            RecalculateBoardEffects();   // 装备变了：三合一重算（备战席目标穿了不挂，上场才挂）
+            _bus.Publish(new EquipmentEquippedEvent(u.Id, item.InstanceId, item.DefId, slotIndex));
+            PublishInventoryChanged();
+            return true;
+        }
+
+        /// <summary>
+        /// 卸下：槽内实例回背包，消耗 1 个拆卸器（#12⑦ 消耗品——可换人、不可重铸分支）。
+        /// 拒绝矩阵：非备战期 / 未知单位 / 槽号越界 / 空槽 / 拆卸器不足（检查在消耗之前，纯拒绝四不动）。
+        /// </summary>
+        public bool Unequip(int unitId, int slotIndex)
+        {
+            if (Phase != GamePhase.Prep) return false;
+            Unit u = FindPlayerUnit(unitId);
+            if (u == null) return false;
+            if (slotIndex < 0 || slotIndex >= Unit.EquipmentSlotCount) return false;
+            EquipmentInstance item = u.EquipmentSlotsInternal[slotIndex];
+            if (item == null) return false;                                  // 空槽
+            if (!_inventory.TryConsume(ConsumableIds.UnsmithTool, 1)) return false;   // 拆卸器不足
+
+            u.EquipmentSlotsInternal[slotIndex] = null;
+            _inventory.Add(item);
+            RecalculateBoardEffects();
+            _bus.Publish(new EquipmentUnequippedEvent(u.Id, item.InstanceId, item.DefId, slotIndex));
+            PublishInventoryChanged();
+            return true;
+        }
+
+        /// <summary>
+        /// 升级：槽内散件原地升成 UpgradeOptions[branchIndex] 指向的大件（#12③）。
+        /// 仅备战期 + 花金币（Economy.TrySpend 严格扣款，不够纯拒绝一分不扣）；
+        /// 原地 = 槽位与实例号都不变（只改写 DefId）；一次定型 = 大件不可再升、不可换分支。
+        /// 拒绝矩阵：非备战期 / 无装备表 / 未知单位 / 槽号越界 / 空槽 / 已是大件 / 分支号越界 / 钱不够。
+        /// </summary>
+        public bool UpgradeEquipment(int unitId, int slotIndex, int branchIndex)
+        {
+            if (Phase != GamePhase.Prep) return false;
+            if (_tables.Equipment == null) return false;
+            Unit u = FindPlayerUnit(unitId);
+            if (u == null) return false;
+            if (slotIndex < 0 || slotIndex >= Unit.EquipmentSlotCount) return false;
+            EquipmentInstance item = u.EquipmentSlotsInternal[slotIndex];
+            if (item == null) return false;
+            EquipmentDef current = _tables.Equipment.Get(item.DefId);
+            if (current.Id == 0 || current.Kind != EquipmentKind.Component) return false;   // 已定型（大件）
+            if (branchIndex < 0 || branchIndex >= current.UpgradeOptions.Length) return false;
+            EquipmentDef target = _tables.Equipment.Get(current.UpgradeOptions[branchIndex]);
+            if (target.Id == 0) return false;                 // 理论不可达（表构造校验保证分支存在）
+            if (!_eco.TrySpend(target.UpgradeCost)) return false;   // 钱不够：纯拒绝（一分不扣）
+
+            int oldDefId = item.DefId;
+            item.DefId = target.Id;                           // 原地升级：只改定义指向
+            RecalculateBoardEffects();                        // 修饰器换新（散件效果 → 大件效果）
+            _bus.Publish(new EquipmentUpgradedEvent(u.Id, item.InstanceId, oldDefId, target.Id, slotIndex, target.UpgradeCost));
+            return true;
+        }
+
+        /// <summary>背包快照事件（批次3）：装备件数 + 拆卸器数——UI 刷新背包用（事实先于刷新）。</summary>
+        private void PublishInventoryChanged()
+            => _bus.Publish(new InventoryChangedEvent(_inventory.EquipmentCount, UnsmithToolCount));
 
         // ─────────────────────── EnterPrep 六步（9.3；StartRun/StartPrep 共用） ───────────────────────
 
@@ -540,6 +670,7 @@ namespace AutoChess.Game
             if (def.Id == 0) return false;
 
             bool boardChanged = false;
+            bool gearReturned = false;   // 材料装备是否有回背包（有才发 InventoryChanged，批次3）
             int star = 1;
             while (star <= 2)   // 合出 star+1：1→2、2→3；3 星不再合（CopiesForStar 封顶）
             {
@@ -595,11 +726,25 @@ namespace AutoChess.Game
                     {
                         _bench.Remove(material);
                     }
+
+                    // 材料装备退回背包（2026-10-29 拍板：锚点装备保留、材料资产退包待再分配）
+                    for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                    {
+                        EquipmentInstance gear = material.EquipmentSlotsInternal[s];
+                        if (gear == null) continue;
+                        material.EquipmentSlotsInternal[s] = null;
+                        _inventory.Add(gear);
+                        gearReturned = true;
+                    }
                 }
 
                 // 4) 高星单位在锚点格位/名单原位置替换；合成体满血出厂、新星面板
                 int newStar = star + 1;
                 var merged = new Unit(_ids.Next(), charId, true, def.StatsForStar(newStar), _bus, newStar, def.SkillId);
+                // 锚点装备继承给合成体（2026-10-29 拍板：合成体 = 锚点的延续，格位与装备同款继承；
+                // 锚点随即被替换出名单，实例引用唯一归属转移到合成体）
+                for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                    merged.EquipmentSlotsInternal[s] = anchor.EquipmentSlotsInternal[s];
                 if (anchorOnBoard)
                 {
                     if (!_board.Remove(anchor))
@@ -622,6 +767,7 @@ namespace AutoChess.Game
                 boardChanged |= mergeChangesBoard;
                 // 不升星、继续查当前星：当前星凑不齐 3 时才 star++ 看下一星（连锁合成）
             }
+            if (gearReturned) PublishInventoryChanged();
             return boardChanged;
         }
 
@@ -792,19 +938,51 @@ namespace AutoChess.Game
                 }
         }
 
+        /// <summary>
+        /// 装备修饰器重算（P3-2 拍板：只挂场上玩家单位——与羁绊/策略完全同构）。
+        /// 幂等全量重算：摘账扫场上 + 备战席（刚下场/穿着装备的都要摘干净），重挂只挂棋盘上的玩家单位。
+        /// 盖章 = 装备号段 1000 + 槽位号（槽 0/1/2 = 1000/1001/1002，三个章互不干扰）。
+        /// 无装备表（null）时仍执行摘账（防御性——无表则无装备实例存在，摘账零命中）。
+        /// </summary>
+        private void RecalculateEquipmentModifiers()
+        {
+            for (int i = 0; i < _playerBoard.Count; i++)
+                for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                    _playerBoard[i].RemoveModifiersBySource(ModSourceId.EquipmentBase + s);
+            for (int i = 0; i < _bench.Count; i++)
+                for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                    _bench[i].RemoveModifiersBySource(ModSourceId.EquipmentBase + s);
+
+            if (_tables.Equipment == null) return;
+            for (int i = 0; i < _playerBoard.Count; i++)
+            {
+                Unit u = _playerBoard[i];
+                for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                {
+                    EquipmentInstance item = u.EquipmentSlotsInternal[s];
+                    if (item == null) continue;
+                    EquipmentDef def = _tables.Equipment.Get(item.DefId);
+                    if (def.Id == 0) continue;                 // 理论不可达（实例只能来自表内发放/升级）
+                    foreach (var tmpl in def.Modifiers)
+                        u.AddModifier(Stamp(tmpl, ModSourceId.EquipmentBase + s));
+                }
+            }
+        }
+
         /// <summary>表内模板盖实例章（模板 SourceId 恒 0；同 SynergySystem.Stamp 纪律）。</summary>
         private static StatModifier Stamp(StatModifier tmpl, int sourceId)
             => new StatModifier(tmpl.Kind, tmpl.Op, tmpl.Value, sourceId);
 
         // ─────────────────────── 内部 ───────────────────────
 
-        /// <summary>场上成员变化/升星的统一重算入口（批次7 起：羁绊与策略修饰器同点位捆绑）。
-        /// 触发点：上场/下场/场上卖出/涉及场上的合成/EnterPrep 兜底——仅购买、备战席合成、备战席卖出不触发
-        /// （场上成员没变，两侧都无状态可变）。</summary>
+        /// <summary>场上成员变化/装备变化的统一重算入口（批次7 起：羁绊与策略修饰器同点位捆绑；批次3 起三合一加装备）。
+        /// 触发点：上场/下场/场上卖出/涉及场上的合成/EnterPrep 兜底 + 装备穿戴/卸下/升级——
+        /// 仅购买、备战席合成、备战席卖出不触发（场上成员没变且无场上装备状态可变）。</summary>
         private void RecalculateBoardEffects()
         {
             RecalculateSynergies();
             RecalculatePolicyModifiers();
+            RecalculateEquipmentModifiers();
         }
 
         /// <summary>羁绊重算的唯一入口。临时输入 = 我方战场 + 备战席（刚下场者也要能摘到旧加成）；

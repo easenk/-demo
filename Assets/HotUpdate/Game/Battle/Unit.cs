@@ -43,6 +43,17 @@ namespace AutoChess.Game
         // ── 蓝条状态（批次5.5）：出生 0（起手蓝决策）；MaxMana=0 的单位连账本都不建 ──
         public int CurrentMana { get; private set; }
 
+        // ── 装备槽（批次3，决策 #12④）：每单位 3 槽，散件/大件同占槽；槽内实例的移动权在 GameSession ──
+        public const int EquipmentSlotCount = 3;
+
+        private readonly EquipmentInstance[] _equipmentSlots = new EquipmentInstance[EquipmentSlotCount];
+
+        /// <summary>装备槽只读视图（null = 空槽）。穿戴/卸下/升级经 GameSession 门禁方法。</summary>
+        public IReadOnlyList<EquipmentInstance> EquipmentSlots => _equipmentSlots;
+
+        /// <summary>槽位数组内部写入口（internal = 同程序集 GameSession 专用；测试走 Session 门禁方法）。</summary>
+        internal EquipmentInstance[] EquipmentSlotsInternal => _equipmentSlots;
+
         public Unit(int id, int charId, bool isPlayerSide, UnitStats stats, EventBus bus, int star = 1, int skillId = 0)
         {
             if (stats.MaxHp < 1)

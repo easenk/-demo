@@ -1,7 +1,7 @@
 namespace AutoChess.Game
 {
     // ─────────────────────────────────────────────────────
-    // 阶段1 战斗事件（10 条）+ 蓝条事件（批次5.5，1 条）+ 阶段2 事件（批次1 起）+ 施法事件（阶段3 批次2）。
+    // 阶段1 战斗事件（10 条）+ 蓝条事件（批次5.5，1 条）+ 阶段2 事件（批次1 起）+ 施法事件（阶段3 批次2）+ 装备事件（阶段3 批次3）。
     // 纪律（设计文档 2.6）：
     //  · 全部 struct —— 广播零装箱（EventBus 的 where T : struct 强制）
     //  · 只带"事实快照"与 int id，不带对象引用 —— 表现层拿 id 查自己的视图表
@@ -499,6 +499,82 @@ namespace AutoChess.Game
             Index = index;
             PolicyId = policyId;
             InstanceSourceId = instanceSourceId;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // 装备事件（阶段3 批次3，决策 #12）：只陈述事实、只带 int id 与快照，
+    // 表现层拿 InstanceId/DefId 查自己的表渲染。事件序：先操作事实（Equipped/Unequipped/Upgraded），
+    // 后背包快照（InventoryChanged）——与"先出手后见血"同款"事实先于刷新"纪律。
+    // ─────────────────────────────────────────────────────
+
+    /// <summary>GameSession.Equip 成功后广播：某装备实例穿上了某单位的某槽（此时修饰器已按重算制挂好）。</summary>
+    public struct EquipmentEquippedEvent
+    {
+        public int UnitId;
+        public int InstanceId;
+        public int DefId;
+        public int SlotIndex;
+
+        public EquipmentEquippedEvent(int unitId, int instanceId, int defId, int slotIndex)
+        {
+            UnitId = unitId;
+            InstanceId = instanceId;
+            DefId = defId;
+            SlotIndex = slotIndex;
+        }
+    }
+
+    /// <summary>GameSession.Unequip 成功后广播：某装备实例从某槽回到背包（拆卸器已消耗）。</summary>
+    public struct EquipmentUnequippedEvent
+    {
+        public int UnitId;
+        public int InstanceId;
+        public int DefId;
+        public int SlotIndex;
+
+        public EquipmentUnequippedEvent(int unitId, int instanceId, int defId, int slotIndex)
+        {
+            UnitId = unitId;
+            InstanceId = instanceId;
+            DefId = defId;
+            SlotIndex = slotIndex;
+        }
+    }
+
+    /// <summary>GameSession.UpgradeEquipment 成功后广播：槽内散件原地升成大件。
+    /// NewDefId = 所选分支（#12③ 一次定型）；GoldSpent = 本次升级费（"升级费不退"的凭据）。</summary>
+    public struct EquipmentUpgradedEvent
+    {
+        public int UnitId;
+        public int InstanceId;
+        public int OldDefId;
+        public int NewDefId;
+        public int SlotIndex;
+        public int GoldSpent;
+
+        public EquipmentUpgradedEvent(int unitId, int instanceId, int oldDefId, int newDefId, int slotIndex, int goldSpent)
+        {
+            UnitId = unitId;
+            InstanceId = instanceId;
+            OldDefId = oldDefId;
+            NewDefId = newDefId;
+            SlotIndex = slotIndex;
+            GoldSpent = goldSpent;
+        }
+    }
+
+    /// <summary>背包规模变化后广播（快照式：当前装备件数与拆卸器数——UI 刷新背包列表用）。
+    /// 具体哪件装备进出由 Equipped/Unequipped/Upgraded 表达；卖棋返还与合成退料也走本事件。</summary>
+    public struct InventoryChangedEvent
+    {
+        public int EquipmentCount;
+        public int UnsmithTools;
+
+        public InventoryChangedEvent(int equipmentCount, int unsmithTools)
+        {
+            EquipmentCount = equipmentCount;
+            UnsmithTools = unsmithTools;
         }
     }
 }
