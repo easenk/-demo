@@ -13,7 +13,8 @@ namespace AutoChess.Tests
     ///  · 弹选（#18②）：奖励关胜利→下回合备战弹 3 候选+广播；败/普通关胜不弹；已选不再进候选（#18⑤）；
     ///    池不足 3 退化（2 条表给 2、空表给 0 且不挡门禁）；同种子同操作=同候选序列（确定性）
     ///  · PickPolicy：拒绝矩阵（非备战期/无待选/越界）；金币正负同构（D2-5：负代价扣到 0 不负债）；
-    ///    经验入账；装备仅记账零副作用
+    ///    经验入账；装备散件入包（批次6 接线，#12⑧）；拆卸器入包（P3-8：第二个来源）；
+    ///    装备条目入包失败（无装备表/表外 id）纯拒绝——任何状态改变之前（候选不消费）
     ///  · 重算制挂载（2026-10-27 拍板"只有上战场的棋子才算"）：修饰器只挂场上、备战席永不携带；
     ///    下场摘干净上场补挂；场上合成体（全新 Unit）重挂；盖章 StrategyBase+序号 递增
     ///  · 战后扣血（2026-10-27 拍板 A 案）：每场战斗结束都扣（胜也扣）；DamageTaken 保持"战败惩罚"原义（胜恒 0）
@@ -61,7 +62,8 @@ namespace AutoChess.Tests
         private static PolicyTable SoloPolicy(params PolicyEffect[] effects)
             => new PolicyTable(new[] { Def(1, "独苗", effects) });
 
-        /// <summary>注入包：角色表必给；编成默认空表；矿池/策略表默认 Default。</summary>
+        /// <summary>注入包：角色表必给；编成默认空表；矿池/策略表默认 Default；
+        /// 装备表给 Default（批次6 起装备类策略效果入包查表——无表场景用内联注入包表达）。</summary>
         private static GameTables Tables(CharacterTable chars, EnemyTable enemies = null, PolicyTable policies = null)
             => new GameTables
             {
@@ -72,6 +74,7 @@ namespace AutoChess.Tests
                 Synergies = SynergyTable.Default,
                 Ores = OreTable.Default,
                 Policies = policies ?? PolicyTable.Default,
+                Equipment = EquipmentTable.Default,
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,
@@ -154,6 +157,8 @@ namespace AutoChess.Tests
                 "装备条目必须带 id");
             Assert.Throws<ArgumentException>(() => new PolicyTable(new[] { Def(1, "零扣血", PolicyEffect.HpCost(0)) }),
                 "战后扣血恒正拒");
+            Assert.Throws<ArgumentException>(() => new PolicyTable(new[] { Def(1, "零拆卸器", PolicyEffect.UnsmithTools(0)) }),
+                "拆卸器恒正拒（P3-8：数量必须恒正）");
 
             var ok = new PolicyTable(new[] { Def(1, "合法", PolicyEffect.Team(new StatModifier(StatKind.Armor, StatOp.Flat, 5)), PolicyEffect.HpCost(4)) });
             Assert.AreEqual(1, ok.All.Count, "合法表登记");
@@ -162,13 +167,13 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void PolicyTable_Default_SixEntriesTwoDirections()
+        public void PolicyTable_Default_SevenEntriesTwoDirections()
         {
             var t = PolicyTable.Default;
-            Assert.AreEqual(6, t.All.Count, "Default 六条占位");
+            Assert.AreEqual(7, t.All.Count, "Default 七条占位（批次6 +工坊补给：P3-8 拆卸器来源）");
 
-            // 两方向形状锁（2026-10-27 拍板）：正面向 4 条 + 负面向 2 条（战后扣血 + 大额回报）
-            int hpCostEntries = 0, teamEntries = 0, gearEntries = 0;
+            // 两方向形状锁（2026-10-27 拍板）：正面向 5 条 + 负面向 2 条（战后扣血 + 大额回报）
+            int hpCostEntries = 0, teamEntries = 0, gearEntries = 0, toolEntries = 0;
             foreach (var def in t.All)
             {
                 foreach (var e in def.Effects)
@@ -176,11 +181,13 @@ namespace AutoChess.Tests
                     if (e.Type == PolicyEffectType.PostBattleHpLoss) hpCostEntries++;
                     if (e.Type == PolicyEffectType.TeamModifier) teamEntries++;
                     if (e.Type == PolicyEffectType.Equipment) gearEntries++;
+                    if (e.Type == PolicyEffectType.UnsmithTool) toolEntries++;
                 }
             }
             Assert.AreEqual(2, hpCostEntries, "两条负面向词条（战后扣血 4 点换大额回报）");
             Assert.GreaterOrEqual(teamEntries, 1, "至少一条全队修饰器（正面向 buff）");
             Assert.GreaterOrEqual(gearEntries, 1, "至少一条装备散件（正面向）");
+            Assert.AreEqual(1, toolEntries, "一条拆卸器词条（工坊补给，P3-8：策略是第二个来源）");
         }
 
         // ─────────────────────── 弹选管线（#18②⑤） ───────────────────────
@@ -402,24 +409,78 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void PickPolicy_Equipment_BookkeepingOnly()
+        public void PickPolicy_Equipment_GrantsGearIntoInventory()
         {
             var bus = new EventBus();
             var picked = new List<PolicyPickedEvent>();
             bus.Subscribe<PolicyPickedEvent>(e => picked.Add(e));
 
-            var policies = new PolicyTable(new[] { Def(1, "散件", PolicyEffect.Gear(7)) });
+            var policies = new PolicyTable(new[] { Def(1, "散件", PolicyEffect.Gear(2)) });   // 表内真实散件 id 2（法术散件）
             var s = WinRewardAndOffer(bus, policies);
             int goldBefore = s.Eco.Gold;
             int xpBefore = s.Eco.XpTotal;
             var playerUnit = s.PlayerBoard[0];
             Assert.IsTrue(s.PickPolicy(0));
 
-            Assert.AreEqual(1, picked.Count, "恰一条选定广播（装备消费者阶段3 按 PolicyId 查表入包，#12⑧ 只给散件）");
-            Assert.AreEqual(7, policies.Get(1).Effects[0].EquipmentId, "表内装备 id 原样可查（阶段3 消费者的数据源）");
+            Assert.AreEqual(1, picked.Count, "恰一条选定广播");
+            Assert.AreEqual(2, policies.Get(1).Effects[0].EquipmentId, "表内装备 id 原样可查");
+            Assert.AreEqual(1, s.Inventory.EquipmentCount, "散件入包（批次6 消费者接线，#12⑧ 只给散件）");
+            Assert.AreEqual(2, s.Inventory.Items[0].DefId, "入包的是装备表内散件 2");
             Assert.AreEqual(goldBefore, s.Eco.Gold, "装备条目不碰钱包");
             Assert.AreEqual(xpBefore, s.Eco.XpTotal, "装备条目不碰经验");
-            Assert.AreEqual(0, playerUnit.Modifiers.Count, "装备条目不挂修饰器（穿戴是阶段3 的事）");
+            Assert.AreEqual(0, playerUnit.Modifiers.Count, "装备条目不挂修饰器（穿戴才是挂载入口，P3-2）");
+        }
+
+        [Test]
+        public void PickPolicy_UnsmithTools_AddsConsumables()
+        {
+            var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.UnsmithTools(3)));
+            int toolsBefore = s.UnsmithToolCount;   // 开局送 2（批次3 拍板）
+            Assert.IsTrue(s.PickPolicy(0));
+            Assert.AreEqual(toolsBefore + 3, s.UnsmithToolCount, "拆卸器 +3（P3-8：策略是第二个拆卸器来源）");
+            Assert.AreEqual(0, s.Inventory.EquipmentCount, "不产生装备实例");
+        }
+
+        [Test]
+        public void PickPolicy_Equipment_NoTableOrBadId_PureReject()
+        {
+            // 场景一：有装备表但表外 id（7 不在装备表内）→ 预检纯拒绝：任何状态都不动
+            var bus = new EventBus();
+            var picked = new List<PolicyPickedEvent>();
+            bus.Subscribe<PolicyPickedEvent>(e => picked.Add(e));
+            var policies = new PolicyTable(new[] { Def(1, "散件", PolicyEffect.Gear(7)) });
+            var s = WinRewardAndOffer(bus, policies);
+            int goldBefore = s.Eco.Gold;
+            int toolsBefore = s.UnsmithToolCount;
+            Assert.IsFalse(s.PickPolicy(0), "表外装备 id：纯拒绝");
+            Assert.AreEqual(0, s.Inventory.EquipmentCount, "不入包");
+            Assert.AreEqual(goldBefore, s.Eco.Gold, "不碰钱包");
+            Assert.AreEqual(toolsBefore, s.UnsmithToolCount, "不碰消耗品");
+            Assert.IsTrue(s.HasPolicyChoice, "候选未消费（修好表后可重选——门禁仍在）");
+            Assert.AreEqual(0, s.OwnedPolicyIds.Count, "未记已选");
+            Assert.AreEqual(0, picked.Count, "无选定广播");
+
+            // 场景二：无装备表（内联注入包——Tables 助手恒含装备表，null 语义只能内联表达）→ 同款纯拒绝
+            var enemies = new EnemyTable(new[] { Round(1, Foe(30, 0, new Pos(4, 4), range: 5)) });
+            var s2 = new GameSession(new EventBus(), 0u, new GameTables
+            {
+                Characters = SingleChar(hp: 500, atk: 100, range: 5),
+                Odds = AllCostOne(),
+                Rounds = RoundTable.Default,
+                Enemies = enemies,
+                Synergies = SynergyTable.Default,
+                Ores = OreTable.Default,
+                Policies = new PolicyTable(new[] { Def(1, "散件", PolicyEffect.Gear(1)) }),
+                Equipment = null,   // 无装备表
+            });
+            Assert.IsTrue(s2.StartRun());
+            Assert.IsTrue(s2.Buy(0));
+            Assert.IsTrue(s2.PlaceOnBoard(s2.Bench[0].Id, new Pos(4, 0)));
+            PlayRound(s2);
+            Assert.IsTrue(s2.StartPrep(), "进 R2 备战弹选");
+            Assert.IsTrue(s2.HasPolicyChoice, "单条表 → 有候选");
+            Assert.IsFalse(s2.PickPolicy(0), "无装备表：纯拒绝");
+            Assert.IsTrue(s2.HasPolicyChoice, "候选未消费");
         }
 
         // ─────────────────────── 重算制挂载（2026-10-27 拍板"只有上战场的棋子才算"） ───────────────────────

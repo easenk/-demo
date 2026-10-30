@@ -7,16 +7,17 @@ using NUnit.Framework;
 namespace AutoChess.Tests
 {
     /// <summary>
-    /// 阶段2 批次6：晶矿系统——掉落记账 / 留存 / PickOre / 开战门禁 / 三类发放路径 / 确定性。
+    /// 阶段2 批次6：晶矿系统——掉落记账 / 留存 / PickOre / 开战门禁 / 发放路径 / 确定性。
     /// 分节契约（每条测试的断言消息自带语义）：
     ///  · 表构造：挡位 1~3 且三挡齐全不重复、池非空、奖励 id 唯一 ≥1、池内 id 必须已登记、
-    ///    类型字段自洽（金币/经验 Amount&gt;0、装备 EquipmentId&gt;0）——建表事故构造期炸
+    ///    类型字段自洽（金币/经验/拆卸器 Amount&gt;0、装备 EquipmentId&gt;0）——建表事故构造期炸
     ///  · 掉落记账：只记编成挡位&gt;0（#17③ 不查回合类型）、死亡格正确、事件字段全、不占棋盘格（#17⑤）、
     ///    玩家单位死亡永不掉、默认编成端到端（R1 矿鼠必掉 / R2 野狼不掉=填表纪律）
     ///  · 留存与门禁：战败已掉的矿照样留（#17⑧）、未死的怪不掉、跨 EnterPrep 留存、
     ///    场上有矿 StartBattle 纯拒绝四不动（#17⑥）、捡完解锁、非备战期 PickOre 全拒
-    ///  · 发放三路径（2026-10-27 拍板：掉落物只有金币/经验/装备散件）：
-    ///    金币加钱、经验加经验、装备仅广播事件（EquipmentId 原样传递、无其他副作用）
+    ///  · 发放四路径（P3-8，2026-10-29 修订；批次6 起背包消费者接线）：
+    ///    金币加钱、经验加经验、装备散件入包（AddEquipment）、拆卸器入包（AddUnsmithTools）；
+    ///    装备入包失败（无装备表/表外 id）纯拒绝——矿留场不广播
     ///  · 确定性：同种子同操作序列 = 同掉落物 id + 同抽取结果（回放重演的地基之一）
     /// 测试纪律：矿 id 与单位 id 共用 IdAllocator 号池——一律取 OresOnGround[0].Id / Bench[0].Id，禁止猜数字。
     /// </summary>
@@ -58,6 +59,7 @@ namespace AutoChess.Tests
         private static OreDef Gold(int id, int amount) => new OreDef(id, OreRewardType.Gold, "金币占位", amount, 0);
         private static OreDef Xp(int id, int amount) => new OreDef(id, OreRewardType.Xp, "经验占位", amount, 0);
         private static OreDef Gear(int id, int equipId) => new OreDef(id, OreRewardType.Equipment, "装备占位", 0, equipId);
+        private static OreDef Tool(int id, int count) => new OreDef(id, OreRewardType.UnsmithTool, "拆卸器占位", count, 0);
 
         /// <summary>注入用矿池：T1 传定制条目，T2/T3 自动补占位（OreTable 三挡齐全校验的要求）。</summary>
         private static OreTable Pool(params OreDef[] tier1)
@@ -74,7 +76,8 @@ namespace AutoChess.Tests
         }
 
         /// <summary>注入包：角色表必给；编成默认空表；矿池默认 Default；策略表给空表（批次7 起弹选管线必读此表——
-        /// 空表=奖励关胜后 0 候选静默，OreTests 链路不被策略门禁干扰）。</summary>
+        /// 空表=奖励关胜后 0 候选静默，OreTests 链路不被策略门禁干扰）；
+        /// 装备表给 Default（批次6 起装备类矿奖励入包查表——无表场景用内联注入包表达）。</summary>
         private static GameTables Tables(CharacterTable chars, EnemyTable enemies = null, OreTable ores = null)
             => new GameTables
             {
@@ -85,6 +88,7 @@ namespace AutoChess.Tests
                 Synergies = SynergyTable.Default,
                 Ores = ores ?? OreTable.Default,
                 Policies = new PolicyTable(new PolicyDef[0]),
+                Equipment = EquipmentTable.Default,
             };
 
         private static CharacterTable SingleChar(int hp = 500, int atk = 100, float atkIv = 1f,
@@ -243,6 +247,12 @@ namespace AutoChess.Tests
                 new OreTierDef(2, new[] { 11 }),
                 new OreTierDef(3, new[] { 11 }),
             }), "装备 EquipmentId=0 拒");
+            Assert.Throws<ArgumentException>(() => new OreTable(new[] { Tool(11, 0) }, new[]
+            {
+                new OreTierDef(1, new[] { 11 }),
+                new OreTierDef(2, new[] { 11 }),
+                new OreTierDef(3, new[] { 11 }),
+            }), "拆卸器 Amount=0 拒（P3-8：数量必须恒正）");
         }
 
         [Test]
@@ -259,6 +269,26 @@ namespace AutoChess.Tests
                     Assert.AreNotEqual(0, def.Id, $"挡位 {tier} 池内 id {oreId} 必须查得到（构造校验兜底复核）");
                 }
             }
+        }
+
+        [Test]
+        public void OreTable_Default_UnsmithTool_LowMidTiersOnly()
+        {
+            // P3-8 拍板锁死：低/中档各含拆卸器条目（两档数量不同）、高档不含（高档留战力型奖励）
+            var t = OreTable.Default;
+            int t1Count = 0, t2Count = 0;
+            bool t3Has = false;
+            foreach (int oreId in t.GetTier(1).OreIds)
+            { var d = t.GetOre(oreId); if (d.Type == OreRewardType.UnsmithTool) t1Count = d.Amount; }
+            foreach (int oreId in t.GetTier(2).OreIds)
+            { var d = t.GetOre(oreId); if (d.Type == OreRewardType.UnsmithTool) t2Count = d.Amount; }
+            foreach (int oreId in t.GetTier(3).OreIds)
+            { if (t.GetOre(oreId).Type == OreRewardType.UnsmithTool) t3Has = true; }
+
+            Assert.Greater(t1Count, 0, "低档池含拆卸器条目（P3-8）");
+            Assert.Greater(t2Count, 0, "中档池含拆卸器条目（P3-8）");
+            Assert.IsFalse(t3Has, "高档池不含拆卸器（P3-8：高档留战力型奖励）");
+            Assert.AreNotEqual(t1Count, t2Count, "两档掉落数量不同（P3-8 拍板；占位 1/2，平衡期重定）");
         }
 
         // ─────────────────────── 掉落记账（#17③⑤：编成挡位驱动、不占格、纯事件） ───────────────────────
@@ -564,28 +594,93 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void Open_Equipment_EventOnly_NoOtherSideEffects()
+        public void Open_Equipment_GrantsGearIntoInventory()
         {
             var bus = new EventBus();
-            var opened = new List<OreOpenedEvent>();
-            var gold = new List<GoldChangedEvent>();
-            bus.Subscribe<OreOpenedEvent>(e => opened.Add(e));
-            bus.Subscribe<GoldChangedEvent>(e => gold.Add(e));
+            var order = new List<string>();
 
-            var ores = Pool(Gear(11, 7));
+            var ores = Pool(Gear(11, 1));   // 表内真实散件 id 1（物理散件）——入包必成功
             var s = DropOne(bus, 1, ores, out int oreId);
+            // 订阅在 DropOne 之后：开局送拆卸器也发 InventoryChanged（批次3 既有事实），不纳入本次事件序断言
+            bus.Subscribe<OreOpenedEvent>(_ => order.Add("opened"));
+            bus.Subscribe<InventoryChangedEvent>(_ => order.Add("inv"));
             int goldBefore = s.Eco.Gold;
             int xpBefore = s.Eco.XpTotal;
             var playerUnit = s.PlayerBoard[0];
             Assert.IsTrue(s.PickOre(oreId));
 
-            var e1 = opened.Single();
-            Assert.AreEqual(OreRewardType.Equipment, e1.RewardType);
-            Assert.AreEqual(7, e1.EquipmentId, "装备散件 id 原样传递（阶段3 背包消费者按它入包）");
-            Assert.AreEqual(0, e1.Amount, "装备类 Amount 恒 0");
+            Assert.AreEqual(1, s.Inventory.EquipmentCount, "散件入包（批次6 消费者接线）");
+            Assert.AreEqual(1, s.Inventory.Items[0].DefId, "入包的是装备表内散件 1");
+            Assert.AreEqual(0, s.OresOnGround.Count, "矿已消费");
             Assert.AreEqual(goldBefore, s.Eco.Gold, "装备矿不碰钱包");
             Assert.AreEqual(xpBefore, s.Eco.XpTotal, "装备矿不碰经验");
-            Assert.AreEqual(0, playerUnit.Modifiers.Count, "装备矿不挂任何修饰器（穿戴是阶段3 的事）");
+            Assert.AreEqual(0, playerUnit.Modifiers.Count, "入包不挂修饰器（穿戴才是挂载入口，P3-2）");
+            CollectionAssert.AreEqual(new[] { "inv", "opened" }, order,
+                "事件序：先到账（InventoryChanged）后陈述（OreOpened）——与金币路径同款");
+        }
+
+        [Test]
+        public void Open_UnsmithTool_AddsConsumables()
+        {
+            var bus = new EventBus();
+            var opened = new List<OreOpenedEvent>();
+            bus.Subscribe<OreOpenedEvent>(e => opened.Add(e));
+
+            var ores = Pool(Tool(11, 2));   // 拆卸器 ×2（P3-8：低/中档掉落）
+            var s = DropOne(bus, 1, ores, out int oreId);
+            int toolsBefore = s.UnsmithToolCount;   // 开局送 2（批次3 拍板）
+            int goldBefore = s.Eco.Gold;
+            Assert.IsTrue(s.PickOre(oreId));
+
+            var e1 = opened.Single();
+            Assert.AreEqual(OreRewardType.UnsmithTool, e1.RewardType);
+            Assert.AreEqual(2, e1.Amount, "拆卸器数量原样传递");
+            Assert.AreEqual(0, e1.EquipmentId, "拆卸器类装备 id 恒 0");
+            Assert.AreEqual(toolsBefore + 2, s.UnsmithToolCount, "背包拆卸器 +2（批次6 消费者接线）");
+            Assert.AreEqual(0, s.Inventory.EquipmentCount, "不产生装备实例");
+            Assert.AreEqual(goldBefore, s.Eco.Gold, "不碰钱包");
+        }
+
+        [Test]
+        public void Open_Equipment_NoTableOrBadId_PureReject()
+        {
+            // 场景一：无装备表（内联注入包——Tables 助手恒含装备表，null 语义只能内联表达）
+            var bus1 = new EventBus();
+            var opened1 = new List<OreOpenedEvent>();
+            bus1.Subscribe<OreOpenedEvent>(e => opened1.Add(e));
+            var ores = Pool(Gear(11, 1));
+            var enemies = new EnemyTable(new[] { Round(1, Foe(30, 0, new Pos(4, 4), oreTier: 1, range: 5)) });
+            var s = new GameSession(bus1, 0u, new GameTables
+            {
+                Characters = SingleChar(hp: 500, atk: 100, range: 5),
+                Odds = AllCostOne(),
+                Rounds = RoundTable.Default,
+                Enemies = enemies,
+                Synergies = SynergyTable.Default,
+                Ores = ores,
+                Policies = new PolicyTable(new PolicyDef[0]),
+                Equipment = null,   // 无装备表
+            });
+            Assert.IsTrue(s.StartRun());
+            Assert.IsTrue(s.Buy(0));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            PlayRound(s);
+            Assert.IsTrue(s.StartPrep(), "进 R2 备战才能捡");
+            int oreId = s.OresOnGround[0].Id;
+            Assert.IsFalse(s.PickOre(oreId), "无装备表：装备类矿纯拒绝");
+            Assert.AreEqual(1, s.OresOnGround.Count, "矿留场（未消费——可重试）");
+            Assert.AreEqual(0, opened1.Count, "无开矿广播");
+            Assert.AreEqual(0, s.Inventory.EquipmentCount, "不入包");
+
+            // 场景二：有表但表外 id（7 不在装备表内）→ 同款纯拒绝
+            var bus2 = new EventBus();
+            var opened2 = new List<OreOpenedEvent>();
+            bus2.Subscribe<OreOpenedEvent>(e => opened2.Add(e));
+            var s2 = DropOne(bus2, 1, Pool(Gear(11, 7)), out int oreId2);
+            Assert.IsFalse(s2.PickOre(oreId2), "表外装备 id：纯拒绝");
+            Assert.AreEqual(1, s2.OresOnGround.Count, "矿留场");
+            Assert.AreEqual(0, opened2.Count, "无开矿广播");
+            Assert.AreEqual(0, s2.Inventory.EquipmentCount, "不入包");
         }
 
         // ─────────────────────── 确定性（同种子同操作 = 同奖励） ───────────────────────

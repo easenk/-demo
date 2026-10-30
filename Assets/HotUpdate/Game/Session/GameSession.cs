@@ -776,8 +776,12 @@ namespace AutoChess.Game
         /// <summary>
         /// 捡矿（7.2）：拒绝矩阵 = 非备战期 / 未知掉落物 id，纯拒绝（四不动）。
         /// 通过后挡位查池 → 会话随机源抽 1 条 → 立即发放 → 广播 OreOpenedEvent → 移出列表。
-        /// 发放路径（2026-10-27 拍板：掉落物只有金币/经验/装备散件三种）：
-        /// 金币 → Eco.AddGold；经验 → Eco.AddXp；装备 → 仅事件（EquipmentId 已带，背包阶段3 接——#12⑧ 只给散件）。
+        /// 发放路径（P3-8 四类，批次6 起背包消费者接线）：
+        /// 金币 → Eco.AddGold；经验 → Eco.AddXp；装备散件 → AddEquipment 入背包（#12⑧ 只给散件）；
+        /// 拆卸器 → AddUnsmithTools 入背包（Amount = 数量）。装备类入包失败（无装备表/表外 id）= 纯拒绝——
+        /// 矿留场、不广播；事件序沿用"先到账后陈述"（InventoryChanged 在前、OreOpenedEvent 在后）。
+        /// 注意：拒绝发生在抽取之后（该次随机抽取已消耗——仅缺表注入的测试场景可触发，
+        /// 生产 GameTables 恒含装备表；重试会再抽一次，不承诺同一条）。
         /// </summary>
         public bool PickOre(int oreId)
         {
@@ -799,7 +803,10 @@ namespace AutoChess.Game
             {
                 case OreRewardType.Gold: _eco.AddGold(def.Amount); break;
                 case OreRewardType.Xp: _eco.AddXp(def.Amount); break;
-                case OreRewardType.Equipment: break;   // 阶段2 仅事件：消费者阶段3 订阅 OreOpenedEvent
+                case OreRewardType.Equipment:
+                    if (AddEquipment(def.EquipmentId) == 0) return false;   // 无装备表/表外 id：纯拒绝，矿留场
+                    break;
+                case OreRewardType.UnsmithTool: AddUnsmithTools(def.Amount); break;   // 表校验 Amount>0，必成功
             }
 
             _bus.Publish(new OreOpenedEvent(drop.Id, drop.Tier, drop.Cell,
@@ -862,8 +869,8 @@ namespace AutoChess.Game
         /// 选策略（8.2）：拒绝矩阵 = 非备战期 / 无待选 / 格号越界，纯拒绝（四不动）。
         /// 通过后逐条目发放：修饰器盖 StrategyBase + 实例序号章入留存账（重算制的重挂数据源）；
         /// 金币正入账、负 SpendClamped（D2-5：扣到 0 为止不产生负债）；经验入账；
-        /// 装备仅记账（阶段3 消费者按 PolicyId 查表入包，#12⑧）；战后扣血入留存账（Settle 每场消费）；
-        /// 钩子工厂当场留存（每场 StartBattle 新造一只注册，与羁绊同款纪律）。
+        /// 装备散件入背包（批次6 接线，#12⑧ 只给散件）；拆卸器入背包（P3-8：第二个来源）；
+        /// 战后扣血入留存账（Settle 每场消费）；钩子工厂当场留存（每场 StartBattle 新造一只注册，与羁绊同款纪律）。
         /// 最后：记已选 → 消费候选（解锁开战）→ 按当前场上名单挂修饰器（重算制）→ 广播。
         /// </summary>
         public bool PickPolicy(int index)
@@ -875,6 +882,15 @@ namespace AutoChess.Game
             int policyId = _policyCandidates[index];
             PolicyDef def = _tables.Policies.Get(policyId);
             if (def.Id == 0) return false;   // 理论不可达（候选来自全表）——防御性兜底
+
+            // 装备条目预检（批次6）：无装备表 / 表外 id → 纯拒绝——发生在任何状态改变之前
+            // （实例章序号、金币、经验、候选、已选清单都不动；PickPolicy 无随机，重试无损）。
+            for (int e = 0; e < def.Effects.Length; e++)
+            {
+                if (def.Effects[e].Type != PolicyEffectType.Equipment) continue;
+                if (_tables.Equipment == null || _tables.Equipment.Get(def.Effects[e].EquipmentId).Id == 0)
+                    return false;
+            }
 
             int instanceSourceId = ModSourceId.StrategyBase + ++_policyInstanceSeq;   // 一条策略一个章
             for (int e = 0; e < def.Effects.Length; e++)
@@ -896,7 +912,11 @@ namespace AutoChess.Game
                         _eco.AddXp(effect.Amount);
                         break;
                     case PolicyEffectType.Equipment:
-                        break;   // 阶段2 仅记账：消费者阶段3 按 PolicyId 查表入包（#12⑧ 只给散件）
+                        AddEquipment(effect.EquipmentId);   // 预检已过必成功；发 InventoryChanged（事实在前、PolicyPicked 在后）
+                        break;
+                    case PolicyEffectType.UnsmithTool:
+                        AddUnsmithTools(effect.Amount);     // 表校验 Amount>0，必成功（P3-8：第二个拆卸器来源）
+                        break;
                     case PolicyEffectType.PostBattleHpLoss:
                         _activePolicyHpCosts.Add((instanceSourceId, effect.Amount));
                         break;

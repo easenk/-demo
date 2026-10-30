@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace AutoChess.Game
 {
     /// <summary>
-    /// 晶矿奖励类型（2026-10-27 用户拍板：掉落物只有金币/经验/装备散件三种，不存在其他情况——
-    /// 原四类设计中的全队修饰器类已从晶矿删除）。
+    /// 晶矿奖励类型（P3-8，2026-10-29 修订为四类——推翻 2026-10-27"只有三种"口径）：
+    /// 拆卸器低/中档掉落且两档数量不同、高档不掉（高档留给战力型奖励：装备散件/大额金币）。
     /// </summary>
     public enum OreRewardType
     {
@@ -16,8 +16,12 @@ namespace AutoChess.Game
         Xp,
 
         /// <summary>装备散件（决策 #12⑧：只给 3 种散件，大件不直接发——分支定制权永远在玩家升级时行使）。
-        /// 阶段2 仅广播事件（EquipmentId 已带），背包消费者阶段3 接。</summary>
+        /// 批次6 起 PickOre 直接入背包（AddEquipment，查装备表）。</summary>
         Equipment,
+
+        /// <summary>拆卸器（P3-8，2026-10-29 拍板）：Amount 就是赠送数量（低/中档池配条目、高档不配）。
+        /// 批次6 起 PickOre 直接入背包（AddUnsmithTools）。</summary>
+        UnsmithTool,
     }
 
     /// <summary>
@@ -28,16 +32,17 @@ namespace AutoChess.Game
     {
         public readonly int Id;
 
-        /// <summary>奖励类型（三值枚举）。</summary>
+        /// <summary>奖励类型（四值枚举：金币/经验/装备散件/拆卸器）。</summary>
         public readonly OreRewardType Type;
 
         /// <summary>显示用描述（禁止当键）。</summary>
         public readonly string Desc;
 
-        /// <summary>金币/经验数值（此两类必须 &gt; 0，编表纪律）；装备类恒 0。</summary>
+        /// <summary>金币/经验/拆卸器数量（此三类必须 &gt; 0，编表纪律）；装备类恒 0（数量走 EquipmentId）。</summary>
         public readonly int Amount;
 
-        /// <summary>装备散件 id（装备类必须 &gt; 0；正式 id 阶段3 装备表定，阶段2 占位）；其余类恒 0。</summary>
+        /// <summary>装备散件 id（装备类必须 &gt; 0——构造期校验；"在装备表内"是编表纪律，
+        /// 运行期由 AddEquipment 查表把关：表外 id = 纯拒绝、矿留场）；其余类恒 0。</summary>
         public readonly int EquipmentId;
 
         public OreDef(int id, OreRewardType type, string desc, int amount, int equipmentId)
@@ -70,8 +75,8 @@ namespace AutoChess.Game
     /// 晶矿奖励表（三挡各一池；实例 + Default 双源模式，同 CharacterTable）。
     /// 构造即校验（fail fast，同 EnemyTable 纪律）：三挡 1/2/3 齐全且不重复（编成表任何挡位都可能出现，
     /// 缺挡 = 开矿期运行时炸，比构造期炸贵）、池非空、OreDef 的 id 唯一且 ≥1、
-    /// 池内 id 必须在定义集里、类型字段自洽（金币/经验 Amount>0、装备 EquipmentId>0）。
-    /// Default = 占位模板（D2-11：方向 2026-10-27 拍板，具体数值阶段3 平衡期随千场压测重定）。
+    /// 池内 id 必须在定义集里、类型字段自洽（金币/经验/拆卸器 Amount&gt;0、装备 EquipmentId&gt;0）。
+    /// Default = 占位模板（D2-11：方向 2026-10-27 拍板 + P3-8 拆卸器 2026-10-29 拍板，具体数值平衡期随千场压测重定）。
     /// </summary>
     public sealed class OreTable
     {
@@ -101,6 +106,10 @@ namespace AutoChess.Game
                     case OreRewardType.Equipment:
                         if (def.EquipmentId <= 0)
                             throw new ArgumentException($"奖励 {def.Id}：装备类的 EquipmentId 必须 > 0（当前 {def.EquipmentId}）");
+                        break;
+                    case OreRewardType.UnsmithTool:
+                        if (def.Amount <= 0)
+                            throw new ArgumentException($"奖励 {def.Id}：拆卸器的 Amount 必须 > 0（当前 {def.Amount}）");
                         break;
                 }
                 _ores[def.Id] = def;
@@ -141,24 +150,27 @@ namespace AutoChess.Game
         public OreDef GetOre(int oreId)
             => _ores.TryGetValue(oreId, out var def) ? def : default;
 
-        /// <summary>占位池（D2-11）：T1 金3/经验2；T2 金6/经验4；T3 金10/经验6/装备散件。
-        /// 装备占位 id=1（正式 id 阶段3 装备表定）；挡位命名与视觉、正式内容阶段3 由用户构思填表。</summary>
+        /// <summary>占位池（D2-11；P3-8 拆卸器条目批次6 填表）：T1 金3/经验2/拆卸器×1；T2 金6/经验4/拆卸器×2
+        /// （两档数量不同，占位锚点）；T3 金10/经验6/装备散件（高档不配拆卸器——留战力型奖励，P3-8）。
+        /// 装备占位 id=1（物理散件）；挡位命名与视觉、正式内容阶段3 由用户构思填表。</summary>
         private static OreTable BuildDefault()
         {
             var ores = new List<OreDef>
             {
                 new OreDef(11, OreRewardType.Gold, "小袋金币：+3", 3, 0),
                 new OreDef(12, OreRewardType.Xp, "记忆碎片：+2 经验", 2, 0),
+                new OreDef(13, OreRewardType.UnsmithTool, "工具袋：拆卸器 ×1", 1, 0),
                 new OreDef(21, OreRewardType.Gold, "金矿石：+6", 6, 0),
                 new OreDef(22, OreRewardType.Xp, "学徒笔记：+4 经验", 4, 0),
+                new OreDef(23, OreRewardType.UnsmithTool, "工具箱：拆卸器 ×2", 2, 0),
                 new OreDef(31, OreRewardType.Gold, "富矿脉：+10", 10, 0),
                 new OreDef(32, OreRewardType.Xp, "远古智慧：+6 经验", 6, 0),
                 new OreDef(33, OreRewardType.Equipment, "神秘散件箱", 0, 1),
             };
             var tiers = new List<OreTierDef>
             {
-                new OreTierDef(1, new[] { 11, 12 }),
-                new OreTierDef(2, new[] { 21, 22 }),
+                new OreTierDef(1, new[] { 11, 12, 13 }),
+                new OreTierDef(2, new[] { 21, 22, 23 }),
                 new OreTierDef(3, new[] { 31, 32, 33 }),
             };
             return new OreTable(ores, tiers);

@@ -438,7 +438,7 @@ namespace AutoChess.Game
 
     /// <summary>
     /// Session.PickOre 开矿广播（批次6）：奖励已当场发放完毕（金币/经验的事件序在本事件之前——先到账后陈述）。
-    /// 奖励事实摊平进事件：装备类仅带 EquipmentId（背包消费者阶段3 订阅本事件即可，#12⑧ 只给散件）；
+    /// 奖励事实摊平进事件：装备类带 EquipmentId（批次6 起 PickOre 直接入背包，#12⑧ 只给散件）；
     /// 修饰器数组这类对象引用不进事件（总线纪律：只带事实快照与 int id）。
     /// </summary>
     public struct OreOpenedEvent
@@ -447,8 +447,8 @@ namespace AutoChess.Game
         public int Tier;                  // 挡位 1~3
         public Pos Cell;                  // 开矿位置（表现层在此播开矿动画）
         public int OreDefId;              // 抽中的奖励定义 id
-        public OreRewardType RewardType; // 金币/经验/装备散件（2026-10-27 拍板：只有三种）
-        public int Amount;                // 金币/经验数值；装备类恒 0
+        public OreRewardType RewardType; // 金币/经验/装备散件/拆卸器（P3-8 四类，2026-10-29 修订）
+        public int Amount;                // 金币/经验/拆卸器数量；装备类恒 0
         public int EquipmentId;           // 装备散件 id；其余类恒 0
 
         public OreOpenedEvent(int oreId, int tier, Pos cell, int oreDefId,
