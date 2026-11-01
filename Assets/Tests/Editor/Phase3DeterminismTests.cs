@@ -351,21 +351,21 @@ namespace AutoChess.Tests
             // Buff：灼烧 DoT 跳伤（SourceUnitId=0 = 无攻击者的持续伤害、1 点/跳）≥ 30 跳
             Assert.GreaterOrEqual(CountDotTicks(log), 30, "灼烧 DoT 留痕（策略钩子驱动 BuffSystem 的生产接线）");
 
-            // 战斗钩子（增伤 20%）实证：普攻 60→72、技能 73→88（R2）；R1 无钩子时技能 70（基准对照）
-            Assert.IsTrue(HasDamageValue(log, 72), "增伤乘区实证：普攻 60 × 1.2 = 72");
+            // 战斗钩子（增伤 20%）实证：普攻 69→83（R2）；R1 无钩子时技能 70（基准对照）
+            Assert.IsTrue(HasDamageValue(log, 83), "增伤乘区实证：普攻 (40+20)×1.15=69 × 1.2 → 83");
             Assert.IsTrue(HasDamageValue(log, 88), "增伤乘区实证：技能 (30 + 40×108/100=73) × 1.2 → 88");
             Assert.IsTrue(HasDamageValue(log, 70), "R1 无钩子基准：技能 30 + 40×100/100 = 70（乘区不凭空生效）");
 
             // 终局精确账目（占位数值锁死——改表必红，逼着同步改测试与文档）
             Unit caster = s.PlayerBoard[0];
-            Assert.AreEqual(60, caster.EffectiveStats.AttackPower, "攻 40 + 输出 20");
+            Assert.AreEqual(69, caster.EffectiveStats.AttackPower, "攻 (40 + 20) × 1.15 = 69（输出大件 v2：平 + 百分比）");
             Assert.AreEqual(108, caster.EffectiveStats.AbilityPower, "法强 100 + 法术散件 8");
             Assert.AreEqual(11, caster.EquipmentSlots[0].DefId, "槽 0 = 输出（大件）");
             Assert.AreEqual(2, caster.EquipmentSlots[1].DefId, "槽 1 = 法术散件");
             Assert.IsNull(caster.EquipmentSlots[2], "槽 2 空");
             Assert.AreEqual(0, s.Inventory.EquipmentCount, "背包无余货（两件都穿着）");
             Assert.AreEqual(4, s.UnsmithToolCount, "拆卸器 = 开局 2 + 矿 2 + 策 1 - 卸 1");
-            Assert.AreEqual(10, s.Eco.Gold, "金币 = 3 - 1买 + 5胜 + 2策 - 5升 + 5胜 + 1连胜");
+            Assert.AreEqual(8, s.Eco.Gold, "金币 = 3 - 1买 + 5胜 + 2策 - 7升 + 5胜 + 1连胜");
             Assert.AreEqual(100, s.PlayerHp, "两连胜不掉血");
             CollectionAssert.AreEqual(new[] { 1 }, s.OwnedPolicyIds.ToArray(), "已选策略 = 魔契");
         }

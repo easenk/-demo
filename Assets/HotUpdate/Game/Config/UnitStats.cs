@@ -28,5 +28,6 @@ namespace AutoChess.Game
         public int   MaxMana;            // 蓝条上限 = 施法阈值（0 = 无蓝条，永不施法）
         public int   ManaPerHit;         // 普攻命中回蓝
         public int   ManaRegenPerSecond; // 每秒固定回蓝（0 = 无被动回蓝）
+        public int   InitialMana;        // 开战起手蓝（7c-1：开战瞬间入账、钳 MaxMana；无蓝条静默）
     }
 }

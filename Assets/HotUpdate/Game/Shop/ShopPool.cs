@@ -112,6 +112,30 @@ namespace AutoChess.Game
             return candidates[candidates.Count - 1];            // 数学上到不了这里（合计 = total），兜底
         }
 
+        /// <summary>
+        /// 定向费用档出价（7c-1 策略"占卜师"：每 N 刷全架出备战席最左侧棋子的费用档）。
+        /// 跳过概率表直接在指定档内按剩余份数加权；档内全空 → Id=0（该格空架，不掷骰）。
+        /// 随机消耗：档内有货恒 1 次掷骰（比常规两段式少一次——定向刷不吃概率表）。
+        /// </summary>
+        public CharacterDef RollByCost(int cost)
+        {
+            if (cost < 1 || cost > 5) return CharacterDef.None;
+
+            var candidates = _characters.GetByCost(cost);
+            int total = 0;
+            foreach (var def in candidates) total += CopiesLeft(def.Id);
+            if (total <= 0) return CharacterDef.None;
+
+            int roll = _random.NextInt(total);
+            int acc = 0;
+            foreach (var def in candidates)
+            {
+                acc += CopiesLeft(def.Id);
+                if (roll < acc) return def;
+            }
+            return candidates[candidates.Count - 1];   // 数学上到不了（合计 = total），兜底
+        }
+
         /// <summary>买定离手：扣 1 份。扣不动（已 0 / 未知 id）返回 false——纯拒绝。</summary>
         public bool TakeOut(int charId)
         {

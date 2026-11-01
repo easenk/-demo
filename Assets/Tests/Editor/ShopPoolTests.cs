@@ -46,6 +46,30 @@ namespace AutoChess.Tests
             Assert.AreEqual(0, pool.CopiesLeft(99));   // 未知 id：0 = 没有，不抛
         }
 
+        // ── 7c-1 定向费用档出价（占卜师的上游） ──
+
+        [Test]
+        public void RollByCost_LockedToTier_RegardlessOfOdds()
+        {
+            var pool = NewPool(1);
+            // L2 概率行 100% 1 费——定向 3 费档仍只出 3 费（跳过概率表是该方法的定义）
+            for (int i = 0; i < 20; i++)
+            {
+                var def = pool.RollByCost(3);
+                Assert.AreEqual(4, def.Id, "定向 3 费档只出三费甲（档内唯一角色）");
+            }
+        }
+
+        [Test]
+        public void RollByCost_EmptyTier_ReturnsNone()
+        {
+            var pool = NewPool(1);
+            for (int i = 0; i < 15; i++) Assert.IsTrue(pool.TakeOut(4), "抽干 3 费甲的全部 15 份");
+            Assert.AreEqual(0, pool.RollByCost(3).Id, "档内全空 → Id=0 哨兵（不掷骰不炸）");
+            Assert.AreEqual(0, pool.RollByCost(0).Id, "费用档 0（非法）→ 哨兵");
+            Assert.AreEqual(0, pool.RollByCost(6).Id, "费用档 6（越界）→ 哨兵");
+        }
+
         [Test]
         public void Roll_SameSeed_SameSequence()
         {

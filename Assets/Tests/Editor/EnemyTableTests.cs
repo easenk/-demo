@@ -69,13 +69,21 @@ namespace AutoChess.Tests
         [Test]
         public void Default_RewardRoundMonsters_SpecialAndWeakPerRound20()
         {
-            // #20①：奖励关怪物 = 特殊怪种（专用名 + 战力较低）——强度指标恒 1、血量不超过普通关第二梯段
+            // #20①：奖励关怪物 = 特殊怪种（专用名 + 战力较低）——强度指标恒 1；
+            // "战力较低"的结构化表达（7b 面板重定后取代旧"血量 ≤60"的占位断言）：
+            // 奖励关每只怪都不比下一关最弱的怪硬——福利关在任意数值量级下都成立，不锁具体数字
             foreach (int r in new[] { 1, 5, 10 })
+            {
+                int nextMinHp = int.MaxValue;
+                foreach (var s in EnemyTable.Default.Get(r + 1).Spawns)
+                    nextMinHp = Math.Min(nextMinHp, s.Stats.MaxHp);
                 foreach (var s in EnemyTable.Default.Get(r).Spawns)
                 {
                     Assert.AreEqual(1, s.PowerLevel, $"回合 {r}「{s.DisplayName}」特殊怪强度指标恒 1（战力较低）");
-                    Assert.LessOrEqual(s.Stats.MaxHp, 60, $"回合 {r}「{s.DisplayName}」特殊怪血量必须低于任何精英/Boss");
+                    Assert.LessOrEqual(s.Stats.MaxHp, nextMinHp,
+                        $"回合 {r}「{s.DisplayName}」不比 R{r + 1} 最弱的怪硬（#20① 奖励关 = 福利关）");
                 }
+            }
         }
 
         [Test]

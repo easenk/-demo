@@ -41,8 +41,9 @@ namespace AutoChess.Game
         /// <summary>
         /// 免费上架：未售旧卡还池 → 重新预订 5 格（备战期开始时由 GameSession 调用）。
         /// 手动刷新走 Refresh（2 金）——免费与付费只差一笔钱，货架流程是同一条。
+        /// forcedCost > 0（7c-1 策略"占卜师"定向刷）：跳过概率表，5 格全部从指定费用档加权出价。
         /// </summary>
-        public void RollOffer()
+        public void RollOffer(int forcedCost = 0)
         {
             // 1) 旧货下架还池：买走的格早已被 Buy 清成空——只有没卖掉的会还
             for (int i = 0; i < Slots; i++)
@@ -55,10 +56,10 @@ namespace AutoChess.Game
             // 2) 新货上架：出价即预订——立刻 TakeOut，同刷的后续格看到的是扣完的余量
             for (int i = 0; i < Slots; i++)
             {
-                var def = _pool.Roll(_eco.Level);
+                var def = forcedCost > 0 ? _pool.RollByCost(forcedCost) : _pool.Roll(_eco.Level);
                 if (def.Id != 0 && _pool.TakeOut(def.Id))
                     _offers[i] = def;
-                // Roll 返回空（该等级可开档全空）或 TakeOut 失败（单线程下不该发生，防御）→ 空格
+                // Roll 返回空（该等级/该档可开份数全空）或 TakeOut 失败（单线程下不该发生，防御）→ 空格
             }
 
             // 3) 广播货架快照（0 = 空格）
@@ -70,11 +71,12 @@ namespace AutoChess.Game
         /// <summary>
         /// 刷新货架：2 金 = 花钱把上架流程再跑一遍（#21⑥）。
         /// 钱不够 = 纯拒绝：货架原样保留（先扣钱再动货架的顺序保证这一点）。
+        /// affinityCostTier > 0（7c-1 策略"占卜师"）：本次刷新 5 格全部出该费用档（计数与触发时机归 GameSession）。
         /// </summary>
-        public bool Refresh()
+        public bool Refresh(int affinityCostTier = 0)
         {
             if (!_eco.TrySpend(RefreshCost)) return false;   // 纯拒绝：钱没扣成，货架一个指头都不碰
-            RollOffer();
+            RollOffer(affinityCostTier);
             return true;
         }
 

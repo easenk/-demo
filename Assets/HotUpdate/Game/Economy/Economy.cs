@@ -87,6 +87,8 @@ namespace AutoChess.Game
 
         private readonly EventBus _bus;
         private int _streak;
+        private int _interestCapBonus;   // 7c-1 策略"放贷人"：利息封顶加值（5 → 5+bonus）
+        private int _xpCostDown;         // 7c-1 策略"学者会"：L6 后买经验减价（4 → 4-down，钳 ≥1）
 
         public int Gold { get; private set; }
 
@@ -105,11 +107,26 @@ namespace AutoChess.Game
         /// <summary>距下一级还差多少经验（派生；满级恒 0）。</summary>
         public int XpToNextLevel => Level >= MaxLevel ? 0 : CumulativeXpToLevel[Level + 1] - XpTotal;
 
-        /// <summary>当前金币能吃到的利息（每 10 金 +1，封顶 5）。Gold 恒 ≥ 0，无需防负。</summary>
-        public int Interest => GameMath.Min(InterestCap, Gold / InterestPer);
+        /// <summary>当前金币能吃到的利息（每 10 金 +1，封顶 5 + 策略加值）。Gold 恒 ≥ 0，无需防负。</summary>
+        public int Interest => GameMath.Min(InterestCap + _interestCapBonus, Gold / InterestPer);
 
         /// <summary>当前连胜的加成（#21③：2 连 +1、3 连 +2、4 连及以上 +3 封顶；不足 2 连为 0）。</summary>
         public int StreakBonus => _streak >= 4 ? 3 : _streak == 3 ? 2 : _streak == 2 ? 1 : 0;
+
+        /// <summary>利息封顶加值（7c-1 策略效果；非正数静默）。只加不减——已入账的利息不追溯。</summary>
+        public void AddInterestCap(int bonus)
+        {
+            if (bonus > 0) _interestCapBonus += bonus;
+        }
+
+        /// <summary>L6 后买经验减价（7c-1 策略效果；非正数静默）。减价钳到 ≥1——经验不许免费。</summary>
+        public void ApplyXpCostDown(int reduction)
+        {
+            if (reduction > 0) _xpCostDown += reduction;
+        }
+
+        /// <summary>买经验的当前实付价（策略折扣后）：L6 前 4 金；L6 后 4 - 折扣（钳 ≥1）。</summary>
+        public int CurrentXpCost => GameMath.Max(1, XpCost - (Level >= 6 ? _xpCostDown : 0));
 
         public Economy(EventBus bus, int startGold)
         {
@@ -154,13 +171,14 @@ namespace AutoChess.Game
         }
 
         /// <summary>
-        /// 买经验：4 金 = 4 XP，不限购（#21⑤）。两个独立拒绝条件：没钱、已满级——
+        /// 买经验：默认 4 金 = 4 XP，不限购（#21⑤；策略折扣走 CurrentXpCost——L6 后 4-down）。
+        /// 两个独立拒绝条件：没钱、已满级——
         /// 满级检查必须在扣钱之前：先扣钱再发现白买，钱就成了空气（"失败必须沉默"的原因）。
         /// </summary>
         public bool BuyXp()
         {
             if (Level >= MaxLevel) return false;   // 满级：买了也白买 → 先拒绝，钱不扣
-            if (!TrySpend(XpCost)) return false;    // 没钱：纯拒绝
+            if (!TrySpend(CurrentXpCost)) return false;    // 没钱：纯拒绝（按折扣后实付价）
             AddXp(XpPerBuy);
             return true;
         }

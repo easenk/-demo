@@ -87,22 +87,40 @@ namespace AutoChess.Tests
             CollectionAssert.AreEqual(new[] { 21, 22 }, t.Get(2).UpgradeOptions, "法术散件 → 回蓝/法强");
             CollectionAssert.AreEqual(new[] { 31, 32, 33 }, t.Get(3).UpgradeOptions, "防御散件 → 生命/物防/法防");
 
-            // 大件费用（占位 5~8 金，#12③）
-            Assert.AreEqual(5, t.Get(11).UpgradeCost);
-            Assert.AreEqual(6, t.Get(12).UpgradeCost);
-            Assert.AreEqual(8, t.Get(13).UpgradeCost);
-            Assert.AreEqual(5, t.Get(21).UpgradeCost);
-            Assert.AreEqual(6, t.Get(22).UpgradeCost);
+            // 大件费用（7c-1 定稿：物理/法术系 7 金、防御系 5 金，#12③）
+            Assert.AreEqual(7, t.Get(11).UpgradeCost);
+            Assert.AreEqual(7, t.Get(12).UpgradeCost);
+            Assert.AreEqual(7, t.Get(13).UpgradeCost);
+            Assert.AreEqual(7, t.Get(21).UpgradeCost);
+            Assert.AreEqual(7, t.Get(22).UpgradeCost);
             Assert.AreEqual(5, t.Get(31).UpgradeCost);
-            Assert.AreEqual(6, t.Get(32).UpgradeCost);
-            Assert.AreEqual(6, t.Get(33).UpgradeCost);
+            Assert.AreEqual(5, t.Get(32).UpgradeCost);
+            Assert.AreEqual(5, t.Get(33).UpgradeCost);
 
-            // 修饰器抽查：攻速大件 = 攻击间隔 -12%（间隔维修饰器语义）
-            var haste = t.Get(12).Modifiers;
-            Assert.AreEqual(1, haste.Length);
-            Assert.AreEqual(StatKind.AttackInterval, haste[0].Kind);
-            Assert.AreEqual(StatOp.Percent, haste[0].Op);
-            Assert.AreEqual(-12f, haste[0].Value, 0.001f);
+            // 修饰器抽查：攻速大件（id 13）v2 = 攻 +20 flat + 攻击间隔 -15%（两条修饰器）
+            var haste = t.Get(13).Modifiers;
+            Assert.AreEqual(2, haste.Length);
+            Assert.AreEqual(StatKind.AttackPower, haste[0].Kind);
+            Assert.AreEqual(StatOp.Flat, haste[0].Op);
+            Assert.AreEqual(20f, haste[0].Value, 0.001f);
+            Assert.AreEqual(StatKind.AttackInterval, haste[1].Kind);
+            Assert.AreEqual(StatOp.Percent, haste[1].Op);
+            Assert.AreEqual(-15f, haste[1].Value, 0.001f);
+
+            // 7c-1 大件 v2：带被动的钩子件清点（输出/暴击/攻速/生命/物防/魔抗 6 件，回蓝/法强纯面板）
+            Assert.IsNotNull(t.Get(11).HookFactory, "输出件带吸血钩子");
+            Assert.IsNotNull(t.Get(12).HookFactory, "暴击件带击杀叠穿透钩子");
+            Assert.IsNotNull(t.Get(13).HookFactory, "攻速件带叠增伤钩子");
+            Assert.IsNull(t.Get(21).HookFactory, "回蓝件纯面板（含起手蓝 +15）");
+            Assert.IsNull(t.Get(22).HookFactory, "法强件纯面板");
+            Assert.IsNotNull(t.Get(31).HookFactory, "生命件带已损回复钩子");
+            Assert.IsNotNull(t.Get(32).HookFactory, "物防件带灼伤光环钩子");
+            Assert.IsNotNull(t.Get(33).HookFactory, "魔抗件带类型减伤+生命回复组合钩子");
+
+            // 回蓝大件的起手蓝维（7c-1 新增 StatKind）
+            var regen = t.Get(21).Modifiers;
+            Assert.IsTrue(System.Array.Exists(regen, m => m.Kind == StatKind.InitialMana && m.Op == StatOp.Flat && System.Math.Abs(m.Value - 15f) < 0.001f),
+                "回蓝大件含起手蓝 +15");
 
             // 阶段2 矿池/策略占位 EquipmentId=1 的含义锁死 = 物理散件
             Assert.AreEqual(EquipmentKind.Component, t.Get(1).Kind);
@@ -388,14 +406,14 @@ namespace AutoChess.Tests
             Assert.AreEqual(108, u.EffectiveStats.AttackPower);
             s.Eco.AddGold(10);
 
-            Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0), "升 0 号分支（11 输出，5 金）");
-            Assert.AreEqual(120, u.EffectiveStats.AttackPower, "原地换效果：100 + 20 = 120（散件 +8 摘、大件 +20 挂）");
+            Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0), "升 0 号分支（11 输出，7 金）");
+            Assert.AreEqual(138, u.EffectiveStats.AttackPower, "原地换效果：(100 + 20) × 1.15 = 138（散件 +8 摘、大件 +20 平 + 15% 百分比挂）");
             Assert.AreEqual(11, u.EquipmentSlots[0].DefId, "原地升级：槽位不变、DefId 改写");
             Assert.AreEqual(id, u.EquipmentSlots[0].InstanceId, "实例号不变（同一件装备）");
             Assert.AreEqual(1, upgraded.Count);
             Assert.AreEqual(1, upgraded[0].OldDefId);
             Assert.AreEqual(11, upgraded[0].NewDefId, "事件携带所选分支");
-            Assert.AreEqual(5, upgraded[0].GoldSpent);
+            Assert.AreEqual(7, upgraded[0].GoldSpent);
 
             Assert.IsFalse(s.UpgradeEquipment(u.Id, 0, 0), "一次定型：大件不可再升");
             Assert.IsFalse(s.UpgradeEquipment(u.Id, 0, 1), "不可换分支（重铸不存在，#12③）");
@@ -404,7 +422,7 @@ namespace AutoChess.Tests
         [Test]
         public void Upgrade_BranchSelection_CostsAndEvents()
         {
-            // 分支 0 = 21 回蓝（5 金）：命中回蓝 +5、每秒回蓝 +1（不带法强维——散件 +8 被摘）
+            // 分支 0 = 21 回蓝（7 金）：命中回蓝 +5、每秒回蓝 +2、起手蓝 +15（不带法强维——散件 +8 被摘）
             {
                 var bus = new EventBus();
                 var upgraded = new List<EquipmentUpgradedEvent>();
@@ -420,12 +438,13 @@ namespace AutoChess.Tests
                 Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0), "选 0 号分支 = 21 回蓝");
                 Assert.AreEqual(21, u.EquipmentSlots[0].DefId);
                 Assert.AreEqual(5, u.EffectiveStats.ManaPerHit, "命中回蓝 0 + 5");
-                Assert.AreEqual(1, u.EffectiveStats.ManaRegenPerSecond, "每秒回蓝 0 + 1");
+                Assert.AreEqual(2, u.EffectiveStats.ManaRegenPerSecond, "每秒回蓝 0 + 2");
+                Assert.AreEqual(15, u.EffectiveStats.InitialMana, "起手蓝 0 + 15（7c-1 新维）");
                 Assert.AreEqual(100, u.EffectiveStats.AbilityPower, "21 号不带法强维：摘散件后法强回 100（分支取舍）");
-                Assert.AreEqual(5, upgraded[0].GoldSpent, "21 号分支费 5 金");
+                Assert.AreEqual(7, upgraded[0].GoldSpent, "21 号分支费 7 金");
             }
 
-            // 分支 1 = 22 法强（6 金）：法强 +20
+            // 分支 1 = 22 法强（7 金）：法强 +40 平 + 25% 百分比
             {
                 var bus = new EventBus();
                 var upgraded = new List<EquipmentUpgradedEvent>();
@@ -440,10 +459,10 @@ namespace AutoChess.Tests
 
                 Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 1), "选 1 号分支 = 22 法强");
                 Assert.AreEqual(22, u.EquipmentSlots[0].DefId);
-                Assert.AreEqual(120, u.EffectiveStats.AbilityPower, "法强大件：100 + 20 = 120");
-                Assert.AreEqual(goldBefore - 6, s.Eco.Gold, "22 号分支费 6 金（TrySpend 严格扣款）");
+                Assert.AreEqual(175, u.EffectiveStats.AbilityPower, "法强大件 v2：(100 + 40) × 1.25 = 175");
+                Assert.AreEqual(goldBefore - 7, s.Eco.Gold, "22 号分支费 7 金（TrySpend 严格扣款）");
                 Assert.AreEqual(22, upgraded[0].NewDefId);
-                Assert.AreEqual(6, upgraded[0].GoldSpent, "事件携带实付金额");
+                Assert.AreEqual(7, upgraded[0].GoldSpent, "事件携带实付金额");
             }
         }
 
@@ -502,13 +521,13 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             Unit u = BuyAndPlace(s, new Pos(0, 0));
             s.Eco.AddGold(10);
-            // 时间线：3 + 10 = 13 → 买棋 -1 = 12 → 升级 -5 = 7 → 卖出 +1（1 费 1 星卖价）= 8
+            // 时间线：3 + 10 = 13 → 买棋 -1 = 12 → 升级 -7 = 5 → 卖出 +1（1 费 1 星卖价）= 6
             int id = s.AddEquipment(1);
             Assert.IsTrue(s.Equip(u.Id, 0, id));
             Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0));
             Assert.IsTrue(s.Sell(u.Id));
 
-            Assert.AreEqual(8, s.Eco.Gold, "卖价只按棋子算（1 金）；升级费 5 金不退（#12⑥ 防升级再卖出刷钱）");
+            Assert.AreEqual(6, s.Eco.Gold, "卖价只按棋子算（1 金）；升级费 7 金不退（#12⑥ 防升级再卖出刷钱）");
             Assert.AreEqual(1, s.Inventory.EquipmentCount, "装备本体回包（只是不折现）");
         }
 

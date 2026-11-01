@@ -203,5 +203,26 @@ namespace AutoChess.Tests
                 a.Buy(0); b.Buy(0);   // 同样的购买动作，保持两侧状态同构
             }
         }
+
+        // ── 7c-1 定向刷新（占卜师：每 N 刷全架出指定费用档） ──
+
+        [Test]
+        public void Refresh_AffinityTier_AllSlotsFromForcedCost()
+        {
+            // 概率表钉死 3 费 100%（AllInCost(3)）——定向 1 费档仍只出 1 费（跳过概率表）
+            var shop = NewShop(3, 99, AllInCost(3));
+            Assert.IsTrue(shop.Refresh(1));
+            foreach (var offer in shop.Offers)
+                Assert.AreEqual(1, offer.Cost, "定向 1 费档：全架 1 费（无视概率表的 3 费 100%）");
+
+            // 定向 0（默认）= 正常路径：按概率表全 3 费
+            Assert.IsTrue(shop.Refresh());
+            foreach (var offer in shop.Offers)
+                Assert.AreEqual(3, offer.Cost, "非定向刷新走概率表：全 3 费");
+
+            // 钱不够时定向也不扣钱不刷（纯拒绝语义不变）
+            var poor = NewShop(3, 1, AllInCost(3));
+            Assert.IsFalse(poor.Refresh(1), "钱不够：纯拒绝");
+        }
     }
 }

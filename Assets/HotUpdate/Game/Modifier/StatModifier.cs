@@ -1,7 +1,7 @@
 namespace AutoChess.Game
 {
     /// <summary>
-    /// 面板维度的枚举索引：与 UnitStats 十三对十三硬对应（批次5.5 蓝条扩容；ModifierTests 用反射逐项核对）。
+    /// 面板维度的枚举索引：与 UnitStats 十四对十四硬对应（批次5.5 蓝条 10→13 维；7c-1 起手蓝 13→14 维）。
     /// 为什么一一对应是硬约束：EffectiveStats（批次4）按 Kind 结算时直接映射到 UnitStats 字段，
     /// 少一个 = 修饰器挂上却静默失效——最贵的一类 bug，用测试焊死。
     /// </summary>
@@ -20,6 +20,7 @@ namespace AutoChess.Game
         MaxMana,            // 蓝条上限 = 施法阈值（批次5.5 扩容；0 = 无蓝条单位）
         ManaPerHit,         // 普攻命中回蓝（职业口径）
         ManaRegenPerSecond, // 每秒固定回蓝（0 = 无被动）
+        InitialMana,        // 开战起手蓝（7c-1：回蓝大件 +15——开战瞬间入账、钳 MaxMana；无蓝条静默）
     }
 
     /// <summary>修饰器的两种算法：Flat = 直接加 Value；Percent = 乘 (1 + Value/100)。</summary>

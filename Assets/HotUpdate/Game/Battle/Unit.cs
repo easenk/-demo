@@ -10,9 +10,9 @@ namespace AutoChess.Game
     /// </summary>
     public sealed class Unit
     {
-        // 蓝条扩容后=13。注意：N对N 反射测试只盯"枚举↔字段"两侧，这个常量靠注释盯——
-        // 将来新增 StatKind 时记得同步改这里，否则 EffectiveStats 草稿纸越界。
-        private const int KindCount = (int)StatKind.ManaRegenPerSecond + 1;
+        // 蓝条扩容后=13；7c-1 起手蓝扩到 14。注意：N对N 反射测试只盯"枚举↔字段"两侧，
+        // 这个常量靠注释盯——将来新增 StatKind 时记得同步改这里，否则 EffectiveStats 草稿纸越界。
+        private const int KindCount = (int)StatKind.InitialMana + 1;
 
         private readonly EventBus _bus;
         private readonly UnitStats _baseStats;
@@ -107,6 +107,7 @@ namespace AutoChess.Game
                 s.MaxMana = ScaledInt(StatKind.MaxMana, _baseStats.MaxMana, 0);            // 蓝条 ≥ 0（0 = 无蓝条单位）
                 s.ManaPerHit = ScaledInt(StatKind.ManaPerHit, _baseStats.ManaPerHit, 0);   // 回蓝 ≥ 0
                 s.ManaRegenPerSecond = ScaledInt(StatKind.ManaRegenPerSecond, _baseStats.ManaRegenPerSecond, 0);
+                s.InitialMana = ScaledInt(StatKind.InitialMana, _baseStats.InitialMana, 0); // 起手蓝 ≥ 0（开战入账、钳 MaxMana 由 AddMana 承担）
                 return s;
             }
         }

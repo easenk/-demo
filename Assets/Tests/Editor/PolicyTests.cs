@@ -167,27 +167,38 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void PolicyTable_Default_SevenEntriesTwoDirections()
+        public void PolicyTable_Default_NineEntries()
         {
             var t = PolicyTable.Default;
-            Assert.AreEqual(7, t.All.Count, "Default 七条占位（批次6 +工坊补给：P3-8 拆卸器来源）");
+            Assert.AreEqual(9, t.All.Count, "Default 九条正式词条（7c-1 用户定稿 2026-11-01）");
 
-            // 两方向形状锁（2026-10-27 拍板）：正面向 5 条 + 负面向 2 条（战后扣血 + 大额回报）
-            int hpCostEntries = 0, teamEntries = 0, gearEntries = 0, toolEntries = 0;
+            // 效果类型清点（形状锁：改表必红，逼着同步改测试与文档）
+            int team = 0, gold = 0, xp = 0, interestCap = 0, xpDown = 0, affinity = 0, upgradeDown = 0,
+                lossShield = 0, randomGear = 0, hooks = 0;
             foreach (var def in t.All)
-            {
                 foreach (var e in def.Effects)
                 {
-                    if (e.Type == PolicyEffectType.PostBattleHpLoss) hpCostEntries++;
-                    if (e.Type == PolicyEffectType.TeamModifier) teamEntries++;
-                    if (e.Type == PolicyEffectType.Equipment) gearEntries++;
-                    if (e.Type == PolicyEffectType.UnsmithTool) toolEntries++;
+                    if (e.Type == PolicyEffectType.TeamModifier) team++;
+                    if (e.Type == PolicyEffectType.Gold) gold++;
+                    if (e.Type == PolicyEffectType.Xp) xp++;
+                    if (e.Type == PolicyEffectType.InterestCapUp) interestCap++;
+                    if (e.Type == PolicyEffectType.XpCostDown) xpDown++;
+                    if (e.Type == PolicyEffectType.ShopAffinity) affinity++;
+                    if (e.Type == PolicyEffectType.UpgradeDiscount) upgradeDown++;
+                    if (e.Type == PolicyEffectType.LossShield) lossShield++;
+                    if (e.Type == PolicyEffectType.RandomEquipment) randomGear++;
+                    if (e.HookFactory != null) hooks++;
                 }
-            }
-            Assert.AreEqual(2, hpCostEntries, "两条负面向词条（战后扣血 4 点换大额回报）");
-            Assert.GreaterOrEqual(teamEntries, 1, "至少一条全队修饰器（正面向 buff）");
-            Assert.GreaterOrEqual(gearEntries, 1, "至少一条装备散件（正面向）");
-            Assert.AreEqual(1, toolEntries, "一条拆卸器词条（工坊补给，P3-8：策略是第二个来源）");
+            Assert.AreEqual(2, team, "两条全队修饰器（战意灌注/奥术共鸣——各附带类型增伤钩子）");
+            Assert.AreEqual(1, gold, "放贷人 +20 金");
+            Assert.AreEqual(1, xp, "学者会 +10 经验");
+            Assert.AreEqual(1, interestCap, "放贷人利息封顶 +2");
+            Assert.AreEqual(1, xpDown, "学者会 L6 后买经验 -1");
+            Assert.AreEqual(1, affinity, "占卜师每 6 刷定向");
+            Assert.AreEqual(2, upgradeDown, "军械商全局 -1 + 军械师·防防御系 -1");
+            Assert.AreEqual(1, lossShield, "免死金牌败血豁免 ×2");
+            Assert.AreEqual(3, randomGear, "军械商 1 + 军械师·防 2 + 辎重队 3（随机装备发放）");
+            Assert.AreEqual(2, hooks, "战意灌注/奥术共鸣各带一个类型增伤钩子");
         }
 
         // ─────────────────────── 弹选管线（#18②⑤） ───────────────────────
@@ -612,19 +623,20 @@ namespace AutoChess.Tests
             int goldAfterPick = s.Eco.Gold;
             Assert.Greater(goldAfterPick, 0, "金币 +20 已入账");
 
-            // R2 普通关胜：胜也扣 4（A 案核心断言）
+            // R2 普通关胜：胜也扣 4（A 案核心断言）+ 每场回血 2
             PlayRound(s);
-            Assert.AreEqual(GameSession.StartHp - 4, s.PlayerHp, "胜场也扣战后血 4 点");
+            Assert.AreEqual(GameSession.StartHp - 4 + GameSession.PerBattleHpRegen, s.PlayerHp,
+                "胜场也扣战后血 4 点（每场回血 +2 同场结算：净 -2）");
             Assert.AreEqual(0, ended.First(e => e.Round == 2).DamageTaken, "DamageTaken 保持战败惩罚原义（胜恒 0，策略代价不进此字段）");
 
-            // R3 强怪败：战败扣血（3+存活敌人数）+ 战后扣血 4
+            // R3 强怪败：战败扣血（3+存活敌人数）+ 战后扣血 4 + 每场回血 2
             Assert.IsTrue(s.StartPrep());
             PlayRound(s);   // R3 败（怪 200 攻 0.5s 一击秒 500 血？不——500 血 3 击；玩家 100 攻杀不死 500 血怪 → 败）
             var r3 = ended.First(e => e.Round == 3);
             Assert.IsFalse(r3.PlayerWon, "R3 战败");
             int battleLoss = r3.DamageTaken;   // 3 + 1 存活 = 4
-            Assert.AreEqual(GameSession.StartHp - 4 - battleLoss - 4, s.PlayerHp,
-                $"R3 败 = 战败扣 {battleLoss} + 策略战后扣 4");
+            Assert.AreEqual(GameSession.StartHp - 4 - battleLoss - 4 + 2 * GameSession.PerBattleHpRegen, s.PlayerHp,
+                $"R3 败 = 战败扣 {battleLoss} + 策略战后扣 4（R2/R3 各回 2）");
             var lastHpEvent = hp.Last(e => e.Delta < 0);
             Assert.AreEqual(-4, lastHpEvent.Delta, "策略战后扣血单独发一条 HpChangedEvent（表现层可区分'抽成'演出）");
         }
@@ -695,6 +707,178 @@ namespace AutoChess.Tests
             PlayRound(s);   // R3 空编成秒胜
             Assert.AreEqual(2, factoryCalls, "每场都新造（空场也注册——注册在 StartBattle，不挑战斗形态）");
             Assert.AreEqual(1, RecordHook.BattleStartCount, "空场秒胜不 Tick——OnBattleStart 永不触发（钩子骨架契约）");
+        }
+
+        // ─────────────────────── 7c-1 策略 v2：规则修正类效果 ───────────────────────
+
+        [Test]
+        public void PickPolicy_InterestCap_RaisesCeiling()
+        {
+            // 放贷人（金 +20 + 封顶 +2）：80 金时利息从 5（封顶）升到 7；20 金同步到账
+            var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.Gold(20), PolicyEffect.InterestCap(2)));
+            s.Eco.AddGold(60);   // 战后钱包约 8 + 60 ≈ 68 → 补到 80 线上（利息按 10 金一档，68 已超 50 封顶线）
+            int wallet = s.Eco.Gold;
+            Assert.AreEqual(5, s.Eco.Interest, "选前：80 金利息被 5 封顶（#21②）");
+
+            Assert.IsTrue(s.PickPolicy(0));
+            Assert.AreEqual(wallet + 20, s.Eco.Gold, "金币 +20 同步到账");
+            Assert.AreEqual(7, s.Eco.Interest, "选后：封顶 5+2 = 7，同一钱包利息吃到 7");
+        }
+
+        [Test]
+        public void PickPolicy_XpCostDown_AppliesOnlyAtLevel6Plus()
+        {
+            // 学者会（经验 +10 + L6 后买经验 -1）：L2 时价 4，升到 L6 后价 3
+            var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.Xp(10), PolicyEffect.XpDiscount(1)));
+            Assert.AreEqual(4, s.Eco.CurrentXpCost, "选前（L2）：买经验 4 金（#21⑤）");
+            Assert.IsTrue(s.PickPolicy(0));
+            Assert.AreEqual(4, s.Eco.CurrentXpCost, "选后仍在 L2：折扣不生效（L6 门槛）");
+
+            s.Eco.AddXp(84);   // 直升满级路径上必经 L6（门槛 36）
+            Assert.AreEqual(3, s.Eco.CurrentXpCost, "L6+：4 - 1 = 3（钳 ≥1）");
+        }
+
+        [Test]
+        public void PickPolicy_UpgradeDiscount_AllAndDefenseStack()
+        {
+            // 军械商（全局 -1）：输出件 7 → 6；军械师·防（防御系 -1）：防御件 5 → 3（两者叠加）
+            int spentAll, spentDef;
+            {
+                var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.RandomGear(1), PolicyEffect.UpgradeCostDown(1, 0)));
+                Assert.IsTrue(s.PickPolicy(0));
+                Unit u = s.PlayerBoard[0];
+                int id = s.AddEquipment(1);   // 物理散件 → 输出（7 金）
+                Assert.IsTrue(s.Equip(u.Id, 0, id));
+                s.Eco.AddGold(10);
+                int before = s.Eco.Gold;
+                Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0));
+                spentAll = before - s.Eco.Gold;
+                Assert.AreEqual(6, spentAll, "全局折扣：输出件 7 - 1 = 6");
+            }
+            {
+                var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.RandomGear(2, 3), PolicyEffect.UpgradeCostDown(1, 3)));
+                Assert.IsTrue(s.PickPolicy(0));
+                Assert.AreEqual(2, s.Inventory.EquipmentCount, "随机 2 件防御散件（filter=3 → 恒为防御散件 id 3）");
+                Assert.AreEqual(3, s.Inventory.Items[0].DefId, "池限定：只出防御散件");
+                Assert.AreEqual(3, s.Inventory.Items[1].DefId, "池限定：只出防御散件");
+
+                Unit u = s.PlayerBoard[0];
+                int id = s.AddEquipment(3);   // 防御散件 → 生命大件（5 金）
+                Assert.IsTrue(s.Equip(u.Id, 0, id));
+                s.Eco.AddGold(10);
+                int before = s.Eco.Gold;
+                Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0));
+                spentDef = before - s.Eco.Gold;
+                Assert.AreEqual(4, spentDef, "防御系折扣：防御件 5 - 1 = 4（本测试只挂了防御折扣）");
+            }
+            // 叠加语义：军械商 + 军械师·防分两个奖励关各选一条（一次弹选只选一条、候选全清），
+            // 都选完后防御件 5 - 1 - 1 = 3
+            {
+                var s = WinRewardAndOffer(new EventBus(), new PolicyTable(new[]
+                {
+                    Def(1, "军械商", PolicyEffect.UpgradeCostDown(1, 0)),
+                    Def(2, "军械师防", PolicyEffect.UpgradeCostDown(1, 3)),
+                }));
+                Assert.IsTrue(s.PickPolicy(0), "R2 选军械商（全局 -1）");
+
+                // R2~R4 普通关打过去；R5 又是奖励关（RoundTable.Default）→ 胜 → R6 备战再弹选
+                while (s.Round < 5) { PlayRound(s); Assert.IsTrue(s.StartPrep()); }
+                PlayRound(s);   // R5 奖励关胜
+                Assert.IsTrue(s.StartPrep(), "进 R6 备战（第二轮弹选）");
+                Assert.IsTrue(s.HasPolicyChoice, "第二轮弹选（候选 = 全表 - 已选，只剩军械师防）");
+                Assert.IsTrue(s.PickPolicy(0), "R6 选军械师防（防御系 -1）");
+
+                Unit u = s.PlayerBoard[0];
+                int id = s.AddEquipment(3);
+                Assert.IsTrue(s.Equip(u.Id, 0, id));
+                s.Eco.AddGold(10);
+                int before = s.Eco.Gold;
+                Assert.IsTrue(s.UpgradeEquipment(u.Id, 0, 0));
+                Assert.AreEqual(3, before - s.Eco.Gold, "两折扣叠加：防御件 5 - 1(全局) - 1(防御) = 3");
+            }
+        }
+
+        [Test]
+        public void PickPolicy_LossShields_SkipNonBossLossDamage_Twice()
+        {
+            // 免死金牌（×2）：R2/R3 普通关败血不动（消耗），R4 败正常扣
+            var enemies = new EnemyTable(new[]
+            {
+                Round(1, Foe(30, 0, new Pos(4, 4), range: 5)),               // R1 奖励关（必胜弹选）
+                Round(2, Foe(5000, 200, new Pos(4, 4), atkIv: 0.5f, range: 5)),   // R2~R4 强怪连败
+                Round(3, Foe(5000, 200, new Pos(4, 4), atkIv: 0.5f, range: 5)),
+                Round(4, Foe(5000, 200, new Pos(4, 4), atkIv: 0.5f, range: 5)),
+            });
+            var s = New(new EventBus(), Tables(SingleChar(hp: 30, atk: 0, range: 5), enemies,
+                SoloPolicy(PolicyEffect.LossShields(2))));
+            Assert.IsTrue(s.StartRun());
+            Assert.IsTrue(s.Buy(0));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            PlayRound(s);   // R1 胜 → 弹选
+            Assert.IsTrue(s.StartPrep());
+            Assert.IsTrue(s.PickPolicy(0));
+            Assert.AreEqual(2, s.LossShields, "选后护盾 2 层");
+
+            int hpAfterR1 = s.PlayerHp;
+            PlayRound(s);   // R2 败 → 护盾抵一次
+            Assert.IsTrue(s.StartPrep());
+            Assert.AreEqual(hpAfterR1, s.PlayerHp, "第一次败：护盾消耗、血不动");
+            Assert.AreEqual(1, s.LossShields, "护盾剩 1");
+
+            PlayRound(s);   // R3 败 → 护盾抵第二次
+            Assert.IsTrue(s.StartPrep());
+            Assert.AreEqual(hpAfterR1, s.PlayerHp, "第二次败：护盾消耗、血不动");
+            Assert.AreEqual(0, s.LossShields, "护盾耗光");
+
+            PlayRound(s);   // R4 败 → 正常扣血
+            Assert.IsTrue(s.StartPrep());
+            Assert.Less(s.PlayerHp, hpAfterR1, "护盾耗光后：败场正常扣血（DamageBase + 存活敌人数）");
+        }
+
+        [Test]
+        public void PickPolicy_ShopAffinity_SixthRefreshRollsBenchLeftmostCost()
+        {
+            // 占卜师（每 6 刷）：选后连刷 6 次，第 6 次全架出 Bench[0] 的费用档。
+            // 机制各段已由单元层锁死（ShopPoolTests.RollByCost / ShopSystemTests.Refresh 定向档）——
+            // 本测试锁 Session 层的计数触发与备战席空仓安全。
+            var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.ShopAffinity(6)));
+            Assert.IsTrue(s.PickPolicy(0));
+
+            // 前置修复：WinRewardAndOffer 买完即上场，Bench 是空的——下场回备战席当 Bench[0]
+            Assert.IsTrue(s.TakeOffBoard(s.PlayerBoard[0].Id), "下场回备战席（当 Bench[0]）");
+            s.Eco.AddGold(20);   // 刷 6 次的钱（2×6 = 12）
+            Assert.IsTrue(s.Bench.Count > 0, "前置：Bench[0] 存在");
+            const int benchCost = 1;   // AllCostOne + SingleChar 表：买的必是 1 费
+
+            for (int i = 1; i <= 6; i++)
+            {
+                Assert.IsTrue(s.RefreshShop(), $"第 {i} 刷成功");
+                if (i == 6)
+                {
+                    foreach (var offer in s.Shop.Offers)
+                        if (offer.Id != 0)
+                            Assert.AreEqual(benchCost, offer.Cost, "第 6 刷定向：全架出 Bench[0] 的费用档（1 费）");
+                }
+            }
+
+            // 备战席空仓安全：卖光后第 12 刷（下一个周期）不定向也不炸
+            while (s.Bench.Count > 0) Assert.IsTrue(s.Sell(s.Bench[0].Id));
+            s.Eco.AddGold(20);
+            for (int i = 7; i <= 12; i++)
+            {
+                Assert.IsTrue(s.RefreshShop(), $"第 {i} 刷（Bench 空）成功不炸");
+            }
+        }
+
+        [Test]
+        public void PickPolicy_RandomGear_GrantsFromPool()
+        {
+            // 辎重队（3 件、filter 0）：背包 +3，每件 ∈ {1,2,3}（会话随机源——同种子可复现）
+            var s = WinRewardAndOffer(new EventBus(), SoloPolicy(PolicyEffect.RandomGear(3)));
+            Assert.IsTrue(s.PickPolicy(0));
+            Assert.AreEqual(3, s.Inventory.EquipmentCount, "随机 3 件基础装备");
+            foreach (var item in s.Inventory.Items)
+                Assert.IsTrue(item.DefId >= 1 && item.DefId <= 3, $"件 {item.InstanceId} 的 DefId {item.DefId} 在三种散件内");
         }
     }
 }

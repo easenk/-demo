@@ -122,6 +122,7 @@ namespace AutoChess.Game
             if (!_started)
             {
                 _started = true;
+                ApplyInitialMana();   // 7c-1 起手蓝：面板事实先于钩子入账（回蓝大件 +15——钳 MaxMana、无蓝条静默）
                 if (_hooks.Count > 0) DispatchOnBattleStart();
             }
 
@@ -145,6 +146,18 @@ namespace AutoChess.Game
         }
 
         // ─────────────────────── 内部执行序 ───────────────────────
+
+        /// <summary>7c-1 起手蓝：开战瞬间把面板 InitialMana 入账（AddMana 钳上限、无蓝条/0 静默）。
+        /// 修饰器来源 = 回蓝大件（+15）等；一场只应用一次（_started 守卫内调用）。</summary>
+        private void ApplyInitialMana()
+        {
+            _board.CollectUnitsOnBoard(true, _playerRoster);
+            _board.CollectUnitsOnBoard(false, _enemyRoster);
+            for (int i = 0; i < _playerRoster.Count; i++)
+                _playerRoster[i].AddMana(GameMath.RoundToInt(_playerRoster[i].EffectiveStats.InitialMana));
+            for (int i = 0; i < _enemyRoster.Count; i++)
+                _enemyRoster[i].AddMana(GameMath.RoundToInt(_enemyRoster[i].EffectiveStats.InitialMana));
+        }
 
         private void ActRoster(List<Unit> roster)
         {
@@ -241,7 +254,7 @@ namespace AutoChess.Game
             }
 
             // ★出手前钩子：唯一可改伤挂点——穿透/增伤/减伤写进 draft（暴击已掷定不改，D2-3）
-            var draft = new AttackDraft { Attacker = attacker, Target = target, IsCrit = isCrit };
+            var draft = new AttackDraft { Attacker = attacker, Target = target, Type = DamageType.Physical, IsCrit = isCrit };
             if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
 
             // 时序契约：先出手（Attacked），后见血（Damaged/Died 在 TakeDamage 内）
@@ -328,7 +341,7 @@ namespace AutoChess.Game
             }
 
             // ★出手前钩子：技能与普攻共享唯一可改伤挂点（穿透/增伤/减伤；暴击已掷定不改，D2-3）
-            var draft = new AttackDraft { Attacker = caster, Target = target, IsCrit = isCrit };
+            var draft = new AttackDraft { Attacker = caster, Target = target, Type = skill.DamageType, IsCrit = isCrit };
             if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
 
             // 时序契约：先出手（SkillCast），后见血（Damaged/Died 在 TakeDamage 内）

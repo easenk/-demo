@@ -66,11 +66,14 @@ namespace AutoChess.Game
         public void PushAttackProgress(Unit unit, float fraction) => _owner.PushAttackProgress(unit, fraction);
     }
 
-    /// <summary>出手前挂点的可改载荷（ref 传入）——钩子改的四个字段全部填进 DamageInput 对应乘区。</summary>
+    /// <summary>出手前挂点的可改载荷（ref 传入）——钩子改的四个字段全部填进 DamageInput 对应乘区。
+    /// Type = 本次伤害类型（7c-1：普攻恒 Physical、施法 = 技能表 DamageType）——
+    /// 类型条件钩子（"受法术伤害降低/物理伤害提升"类）的判据，钩子只读不改。</summary>
     public struct AttackDraft
     {
         public Unit Attacker;
         public Unit Target;
+        public DamageType Type;              // 本次伤害类型（只读判据：类型条件钩子用）
         public bool IsCrit;                  // 已掷定，钩子不改（D2-3——骨架只透传，CombatSystem 用自己的本地变量）
         public int FlatPen;                  // 固定穿透 → DamageInput.FlatPen
         public int PercentPen;               // 百分比穿透 → DamageInput.PercentPen

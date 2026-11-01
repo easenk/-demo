@@ -351,5 +351,225 @@ namespace AutoChess.Tests
             // 技能基础 70（30 + 40×100/100）× 增伤 1.2 = 84
             Assert.AreEqual(84, hitsOnEnemy[0].FinalDamage, "增伤钩子对技能伤害同样生效：70 × 1.2 = 84");
         }
+
+        // ── 7c-1 扩充：装备大件 v2 / 策略 v2 的效果钩子（穿戴者制 + 成员制类型增伤 + 起手蓝） ──
+
+        [Test]
+        public void KillPenStackHook_StacksOnKill_CapsAtMax()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var damages = new List<UnitDamagedEvent>();
+            bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+
+            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var weak = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 50, atk: 0, armor: 60));   // 首击 63 即死
+            var enemy = Place(bus, board, 3, false, new Pos(2, 2), Stats(hp: 100000, atk: 0, armor: 60));
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.KillPenStackHook(player, 10, 50, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 95) combat.Tick();   // 首击 + 杀 weak + 对 enemy 三击（0 层→1 层对比）
+
+            var onEnemy = damages.Where(d => d.UnitId == enemy.Id).ToList();
+            Assert.GreaterOrEqual(onEnemy.Count, 2, "对大血敌至少两击");
+            // 杀 weak 前（0 层）：100 × 100/160 = 62.5 → 63；杀后（1 层 10%）：有效抗性 60×0.9=54 → 100×100/154 = 64.9 → 65
+            Assert.AreEqual(65, onEnemy[0].FinalDamage, "击杀后下一击吃 10% 穿透：100 × 100/(100+54) = 65");
+        }
+
+        [Test]
+        public void AttackAmpStackHook_StacksPerHit_CapsAtMax()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var damages = new List<UnitDamagedEvent>();
+            bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+
+            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 1000000, atk: 0));
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.AttackAmpStackHook(player, 5, 50, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 12 * 31) combat.Tick();   // 12 次出手（攻击间隔 1s = 30~31 tick）
+
+            var hits = damages.Where(d => d.SourceUnitId == player.Id).ToList();
+            Assert.GreaterOrEqual(hits.Count, 11, "至少 11 击（10 层叠满 + 封顶验证）");
+            Assert.AreEqual(100, hits[0].FinalDamage, "首击 0 层 = 100");
+            Assert.AreEqual(105, hits[1].FinalDamage, "第二击 1 层 = 100 × 1.05");
+            Assert.AreEqual(110, hits[2].FinalDamage, "第三击 2 层 = 100 × 1.10");
+            for (int i = 10; i < hits.Count; i++)
+                Assert.AreEqual(150, hits[i].FinalDamage, $"第 {i + 1} 击封顶 50%：100 × 1.50");
+        }
+
+        [Test]
+        public void LostHpRegenHook_HealsPercentOfMissingHp_EverySecond()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var heals = new List<UnitHealedEvent>();
+            bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
+
+            var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 10000, atk: 0));
+            Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 500));   // t39 首击 -500
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.LostHpRegenHook(wearer, 5, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 65) combat.Tick();   // 2 秒出头：t39 重创 → t60 首跳回复
+
+            Assert.IsNotEmpty(heals, "回复已发生");
+            Assert.AreEqual(25, heals[0].Amount, "每秒回已损 5%：500 × 0.05 = 25（MaxHp 回复不掺和）");
+        }
+
+        [Test]
+        public void MaxHpRegenHook_HealsPercentOfMaxHp_EveryPeriod()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var heals = new List<UnitHealedEvent>();
+            bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
+
+            var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 10000, atk: 0));
+            Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 500));   // t39 重创（制造不满血）
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.MaxHpRegenHook(wearer, 2.5f, 2, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 65) combat.Tick();
+
+            Assert.IsNotEmpty(heals, "回复已发生");
+            Assert.AreEqual(250, heals[0].Amount, "每 2 秒回最大生命 2.5%：10000 × 0.025 = 250");
+        }
+
+        [Test]
+        public void BurnAuraHook_BurnsAdjacentEnemies_Periodically()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var damages = new List<UnitDamagedEvent>();
+            bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+
+            var wearer = Place(bus, board, 1, true, new Pos(2, 2), Stats(hp: 10000, atk: 0));    // 玩家排最前排（row 2）
+            var near = Place(bus, board, 2, false, new Pos(2, 0), Stats(hp: 10000, atk: 0));   // (2,3)：切比雪夫 1 → 圈内
+            var far = Place(bus, board, 3, false, new Pos(6, 1), Stats(hp: 8000, atk: 0));     // (6,4)：切比雪夫 4 → 圈外
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.BurnAuraHook(wearer, 2.5f, 2, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 65) combat.Tick();   // t60 首跳（2 秒周期）
+
+            var onNear = damages.Where(d => d.UnitId == near.Id).ToList();
+            var onFar = damages.Where(d => d.UnitId == far.Id).ToList();
+            // 注意：atk 0 的佩戴者仍会普攻（保底 1 伤害）——按伤害值断言光环那一跳，不数总条数
+            Assert.IsTrue(onNear.Any(d => d.FinalDamage == 250), "圈内敌吃到光环一跳 = 其最大生命 2.5%（10000 × 0.025）");
+            var auraHit = onNear.First(d => d.FinalDamage == 250);
+            Assert.AreEqual(wearer.Id, auraHit.SourceUnitId, "伤害来源 = 穿戴者（事件流可归因）");
+            Assert.IsTrue(onFar.All(d => d.FinalDamage != 250), "圈外敌不被灼伤（只有保底 1 的普攻噪声）");
+        }
+
+        [Test]
+        public void TypeDamageReductionHook_OnlyMatchingType()
+        {
+            // 段一：挂 Physical 30% —— 普攻（物理）被减：100 × 0.7 = 70
+            {
+                var bus = new EventBus();
+                var board = new BoardData(bus);
+                var damages = new List<UnitDamagedEvent>();
+                bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+                var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 100000, atk: 0));
+                Place(bus, board, 2, false, new Pos(1, 1), Stats(atk: 100));
+
+                var combat = new CombatSystem(board, bus, 11u);
+                combat.AddHook(new CombatHookLibrary.TypeDamageReductionHook(wearer, DamageType.Physical, 30f, ModSourceId.TestBase));
+                int guard = 0;
+                while (guard++ < 45) combat.Tick();   // 敌攻间隔 1s → t30 首击
+
+                var onWearer = damages.Where(d => d.UnitId == wearer.Id).ToList();
+                Assert.IsNotEmpty(onWearer);
+                Assert.AreEqual(70, onWearer[0].FinalDamage, "类型匹配：物理普攻 100 × (1-0.3) = 70");
+            }
+
+            // 段二：挂 Magic 30% —— 普攻（物理）不受影响
+            {
+                var bus = new EventBus();
+                var board = new BoardData(bus);
+                var damages = new List<UnitDamagedEvent>();
+                bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+                var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 100000, atk: 0));
+                Place(bus, board, 2, false, new Pos(1, 1), Stats(atk: 100));
+
+                var combat = new CombatSystem(board, bus, 11u);
+                combat.AddHook(new CombatHookLibrary.TypeDamageReductionHook(wearer, DamageType.Magic, 30f, ModSourceId.TestBase));
+                int guard = 0;
+                while (guard++ < 45) combat.Tick();
+
+                var onWearer = damages.Where(d => d.UnitId == wearer.Id).ToList();
+                Assert.IsNotEmpty(onWearer);
+                Assert.AreEqual(100, onWearer[0].FinalDamage, "类型不匹配：法术减伤对物理普攻无效");
+            }
+        }
+
+        [Test]
+        public void TypeDamageAmpHook_MemberOnly_MatchingType()
+        {
+            var bus = new EventBus();
+            var board = new BoardData(bus);
+            var damages = new List<UnitDamagedEvent>();
+            bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
+
+            var member = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var outsider = Place(bus, board, 3, true, new Pos(7, 0), Stats(atk: 100));
+            var enemyA = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));   // member 的最近敌
+            var enemyB = Place(bus, board, 4, false, new Pos(6, 1), Stats(hp: 100000, atk: 0));   // outsider 的最近敌
+
+            var combat = new CombatSystem(board, bus, 11u);
+            combat.AddHook(new CombatHookLibrary.TypeDamageAmpHook(new[] { member }, DamageType.Physical, 30f, ModSourceId.TestBase));
+            int guard = 0;
+            while (guard++ < 35) combat.Tick();
+
+            var onA = damages.Where(d => d.UnitId == enemyA.Id).ToList();
+            var onB = damages.Where(d => d.UnitId == enemyB.Id).ToList();
+            Assert.AreEqual(130, onA[0].FinalDamage, "成员物理伤害 +30%：100 × 1.3");
+            Assert.AreEqual(100, onB[0].FinalDamage, "非成员不吃增伤");
+        }
+
+        [Test]
+        public void InitialMana_AppliedAtBattleStart_ClampedByMaxMana()
+        {
+            // 有蓝条：起手蓝 15 → 开战 CurrentMana = 15；超额 70 → 钳到上限 60
+            {
+                var bus = new EventBus();
+                var board = new BoardData(bus);
+                var casterStats = new UnitStats
+                {
+                    MaxHp = 1000, AttackPower = 10, Armor = 0, MagicResist = 0, AbilityPower = 100,
+                    AttackRange = 5, AttackInterval = 1f, MoveInterval = 1f,
+                    CritChance = 0, CritDamage = 50, MaxMana = 60, ManaPerHit = 10, ManaRegenPerSecond = 0,
+                };
+                var caster = new Unit(1, 0, true, casterStats, bus);
+                Assert.IsTrue(board.TryPlace(caster, new Pos(0, 0)));
+                caster.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 15f, ModSourceId.TestBase));
+                caster.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 55f, ModSourceId.TestBase + 1));   // 合计 70 > 60
+
+                Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));
+                var combat = new CombatSystem(board, bus, 11u);
+                combat.Tick();   // 首 tick：起手蓝入账（先于任何回蓝/施法）
+
+                Assert.AreEqual(60, caster.CurrentMana, "起手蓝 70 钳到 MaxMana 60（AddMana 上限语义）");
+            }
+
+            // 无蓝条：起手蓝静默（AddMana 对 MaxMana=0 不建账本）
+            {
+                var bus = new EventBus();
+                var board = new BoardData(bus);
+                var plain = Place(bus, board, 1, true, new Pos(0, 0), Stats());
+                plain.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 15f, ModSourceId.TestBase));
+                Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));
+                var combat = new CombatSystem(board, bus, 11u);
+                combat.Tick();
+                Assert.AreEqual(0, plain.CurrentMana, "无蓝条单位：起手蓝静默不生效");
+            }
+        }
     }
 }

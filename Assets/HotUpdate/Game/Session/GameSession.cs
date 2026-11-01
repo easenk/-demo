@@ -71,6 +71,10 @@ namespace AutoChess.Game
         public const int BossHealFast = 35;
         public const int BossHealSlow = 10;
 
+        /// <summary>每场战斗结束的固定回血（2026-11-01 拍板：全局血量容错托底——走结算即回，
+        /// 胜败都回、扣到 0 已终局的局不救；与 Boss 限时回血叠加）。</summary>
+        public const int PerBattleHpRegen = 2;
+
         /// <summary>开局拆卸器数（2026-10-29 拍板：送 2 个；掉落来源 = 晶矿/策略，批次6 接入）。</summary>
         public const int StartUnsmithTools = 2;
 
@@ -114,6 +118,13 @@ namespace AutoChess.Game
         // ── 装备（批次3，决策 #12）：背包（穿戴中的实例在 Unit 的装备槽里，引用唯一归属） ──
         private readonly Inventory _inventory = new Inventory();
 
+        // ── 7c-1 策略 v2 的规则修正状态（占卜师/军械商/军械师·防/免死金牌的会话侧账本） ──
+        private int _shopRefreshCount;                                // 占卜师：累计成功刷新次数（失败不占周期）
+        private int _shopAffinityPeriod;                              // 占卜师：定向周期（0 = 未启用；每第 N 刷触发）
+        private int _upgradeDiscountAll;                              // 军械商：全局升级折扣（叠加）
+        private readonly int[] _upgradeDiscountByKind = new int[4];   // 军械师·防：按系别折扣（下标 = 散件 id 1/2/3）
+        private int _lossShields;                                     // 免死金牌：非 Boss 败免扣血剩余次数
+
         // ── 状态（private set：只有本类能改）──
 
         public GamePhase Phase { get; private set; }
@@ -143,6 +154,7 @@ namespace AutoChess.Game
         public IReadOnlyList<OreDrop> OresOnGround => _oresOnGround;           // 批次6：场上晶矿（StartBattle 门禁源；表现层做"捡完才能开战"引导与点击仲裁）
         public bool HasPolicyChoice => _policyCandidates.Count > 0;           // 批次7：有待选策略（StartBattle 门禁源）
         public IReadOnlyList<int> PolicyCandidates => _policyCandidates;       // 批次7：候选策略 Id（弹窗渲染用）
+        public int LossShields => _lossShields;                                // 7c-1 免死金牌剩余次数（非 Boss 败免扣血）
         public IReadOnlyList<int> OwnedPolicyIds => _ownedPolicyIds;           // 批次7：已选策略 Id（战绩页画像字段之一，#19③）
         public Inventory Inventory => _inventory;                               // 批次3：背包（写操作经本类门禁方法）
         public int UnsmithToolCount => _inventory.ConsumableCount(ConsumableIds.UnsmithTool);   // 批次3：拆卸器持有数
@@ -221,6 +233,20 @@ namespace AutoChess.Game
                     _combat.AddHook(_activePolicyHooks[i].Factory(boardPlayers));
             }
 
+            // 6.7 装备钩子注册（7c-1 大件 v2）：场上玩家单位穿的大件带被动（HookFactory）→
+            //     每场按穿戴者新造一只注册（穿戴者制；备战席穿着的不注册——效果只挂场上，P3-2 同构）
+            for (int i = 0; i < _playerBoard.Count; i++)
+            {
+                Unit u = _playerBoard[i];
+                for (int s = 0; s < Unit.EquipmentSlotCount; s++)
+                {
+                    EquipmentInstance item = u.EquipmentSlotsInternal[s];
+                    if (item == null) continue;
+                    var factory = _tables.Equipment.Get(item.DefId).HookFactory;
+                    if (factory != null) _combat.AddHook(factory(u));
+                }
+            }
+
             // 7. 构造即终局（一方空场）→ 战斗根本没发生，直接结算（钩子永不触发）
             Phase = GamePhase.Battle;
             if (_combat.IsOver)
@@ -252,7 +278,14 @@ namespace AutoChess.Game
                 if (roundDef.Type == RoundType.Boss)
                     damageTaken = PlayerHp;
                 else if (roundDef.Type != RoundType.Reward)
-                    damageTaken = roundDef.DamageBase + enemySurvivors;
+                {
+                    // 7c-1 免死金牌：非 Boss 战败免扣血（次数制，消耗一次、血不动；
+                    // 奖励关豁免与 Boss 清零判负都不适用——Boss 败就是败，护盾拦不住终局）
+                    if (_lossShields > 0)
+                        _lossShields--;
+                    else
+                        damageTaken = roundDef.DamageBase + enemySurvivors;
+                }
                 if (damageTaken > 0) ApplyHpChange(-damageTaken);
             }
 
@@ -262,6 +295,12 @@ namespace AutoChess.Game
             //     表现层从 HpChangedEvent 区分"挨打演出"与"抽成演出"）
             for (int i = 0; i < _activePolicyHpCosts.Count; i++)
                 ApplyHpChange(-_activePolicyHpCosts[i].HpLoss);
+
+            // 2.6 每场战斗结束回复 2 血（2026-11-01 拍板：全局血量的容错托底层——
+            //     走结算即回复（含秒胜与败局）；顺序在败血之后——**扣到 0 的局不救**（终局不可逆：
+            //     血尽判负在本场已成立，回血跳过，第 7 步终局判定照常触发）；
+            //     胜败都回、封顶 100、满血静默。与终局 Boss 限时回血（#21⑨ 35/10）叠加）
+            if (PlayerHp > 0) ApplyHpChange(PerBattleHpRegen);
 
             // 3. 结算收入（#21①⑤）：先按"本场之前已通关精英数"入账（R6 场本身还是 5 金段位），
             //    精英胜才涨段（下一场起 +1；精英败档位不涨）
@@ -307,7 +346,15 @@ namespace AutoChess.Game
         public bool RefreshShop()
         {
             if (Phase != GamePhase.Prep) return false;
-            return _shop.Refresh();
+            // 7c-1 占卜师：定向刷——本次若是"第 N 次"成功刷新且备战席有人 → 5 格全出 Bench[0] 的费用档。
+            // 档位在扣钱之前算好（失败纯拒绝不占周期：计数只在成功后递增）。
+            int affinityTier = 0;
+            if (_shopAffinityPeriod > 0 && _bench.Count > 0
+                && (_shopRefreshCount + 1) % _shopAffinityPeriod == 0)
+                affinityTier = _tables.Characters.Get(_bench[0].CharId).Cost;
+            if (!_shop.Refresh(affinityTier)) return false;
+            _shopRefreshCount++;
+            return true;
         }
 
         /// <summary>
@@ -515,12 +562,17 @@ namespace AutoChess.Game
             if (branchIndex < 0 || branchIndex >= current.UpgradeOptions.Length) return false;
             EquipmentDef target = _tables.Equipment.Get(current.UpgradeOptions[branchIndex]);
             if (target.Id == 0) return false;                 // 理论不可达（表构造校验保证分支存在）
-            if (!_eco.TrySpend(target.UpgradeCost)) return false;   // 钱不够：纯拒绝（一分不扣）
+
+            // 7c-1 升级折扣（军械商全局 / 军械师·防按系别——散件 id 即系别 1/2/3，可叠加）：
+            // 折到 0 = 免费升级（TrySpend 拒绝非正数，0 元走免扣分支）
+            int cost = target.UpgradeCost - _upgradeDiscountAll - _upgradeDiscountByKind[current.Id];
+            if (cost < 0) cost = 0;
+            if (cost > 0 && !_eco.TrySpend(cost)) return false;   // 钱不够：纯拒绝（一分不扣）
 
             int oldDefId = item.DefId;
             item.DefId = target.Id;                           // 原地升级：只改定义指向
             RecalculateBoardEffects();                        // 修饰器换新（散件效果 → 大件效果）
-            _bus.Publish(new EquipmentUpgradedEvent(u.Id, item.InstanceId, oldDefId, target.Id, slotIndex, target.UpgradeCost));
+            _bus.Publish(new EquipmentUpgradedEvent(u.Id, item.InstanceId, oldDefId, target.Id, slotIndex, cost));
             return true;
         }
 
@@ -919,6 +971,32 @@ namespace AutoChess.Game
                         break;
                     case PolicyEffectType.PostBattleHpLoss:
                         _activePolicyHpCosts.Add((instanceSourceId, effect.Amount));
+                        break;
+                    // ── 7c-1 规则修正类：发放 = 写入会话/系统参数（即时生效、永久持续）──
+                    case PolicyEffectType.InterestCapUp:
+                        _eco.AddInterestCap(effect.Amount);
+                        break;
+                    case PolicyEffectType.XpCostDown:
+                        _eco.ApplyXpCostDown(effect.Amount);
+                        break;
+                    case PolicyEffectType.ShopAffinity:
+                        _shopAffinityPeriod = effect.Amount;
+                        break;
+                    case PolicyEffectType.UpgradeDiscount:
+                        if (effect.EquipmentId == 0) _upgradeDiscountAll += effect.Amount;
+                        else _upgradeDiscountByKind[effect.EquipmentId] += effect.Amount;
+                        break;
+                    case PolicyEffectType.LossShield:
+                        _lossShields += effect.Amount;
+                        break;
+                    case PolicyEffectType.RandomEquipment:
+                        // 随机基础装备：池 = 三种散件（filter 0）或仅防御散件（filter 3）；
+                        // 会话随机源抽取——同种子同结果（确定性纪律）
+                        for (int g = 0; g < effect.Amount; g++)
+                        {
+                            int defId = effect.EquipmentId == 0 ? 1 + _random.NextInt(3) : effect.EquipmentId;
+                            AddEquipment(defId);
+                        }
                         break;
                 }
                 if (effect.HookFactory != null)   // 钩子与效果类型正交：条目可"既发效果又带钩子"

@@ -84,28 +84,29 @@ namespace AutoChess.Game
             return new[]
             {
                 //  id  名字        费  族标签                              职业            技能  血   攻   甲  法抗 射程 攻间隔 移间隔 蓝上限
-                Def( 1, "野猪武士",   1, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Tank,     0,  60, 12, 35, 25, 1, 1.1f, 1.0f),
-                Def( 2, "兽人投矛手", 1, new[] { SynergyId.Brute, SynergyId.Ranger },   RoleId.Marksman, 0,  55, 14, 25, 20, 2, 1.2f, 1.0f),
-                Def( 3, "民兵",       1, new[] { SynergyId.Bulwark, SynergyId.Crown },  RoleId.Tank,     0,  65, 11, 30, 30, 1, 1.2f, 1.0f),
-                Def( 4, "巫术学徒",   1, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     0,  45,  9, 20, 25, 2, 1.4f, 1.0f),
-                Def( 5, "魔弹射手",   1, new[] { SynergyId.Arcane, SynergyId.Ranger },  RoleId.Marksman, 0,  45, 13, 20, 20, 3, 1.3f, 1.1f),
+                //  面板 = 7b 重定（2026-11-01，用户给定金铲铲参考区间 + 职业分化：坦血顶攻底/刺血底攻顶/术攻底法抗高）
+                Def( 1, "野猪武士",   1, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Tank,     0,  580, 36, 38, 34, 1, 1.1f, 1.0f),
+                Def( 2, "兽人投矛手", 1, new[] { SynergyId.Brute, SynergyId.Ranger },   RoleId.Marksman, 0,  460, 44, 30, 30, 2, 1.2f, 1.0f),
+                Def( 3, "民兵",       1, new[] { SynergyId.Bulwark, SynergyId.Crown },  RoleId.Tank,     0,  540, 38, 40, 34, 1, 1.2f, 1.0f),
+                Def( 4, "巫术学徒",   1, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     0,  460, 37, 30, 36, 2, 1.4f, 1.0f),
+                Def( 5, "魔弹射手",   1, new[] { SynergyId.Arcane, SynergyId.Ranger },  RoleId.Marksman, 0,  470, 43, 30, 31, 3, 1.3f, 1.1f),
 
-                Def( 6, "暗狼刺客",   2, new[] { SynergyId.Brute, SynergyId.Shadow },   RoleId.Assassin, 0,  70, 16, 25, 20, 1, 1.0f, 0.9f),
-                Def( 7, "符文守卫",   2, new[] { SynergyId.Bulwark, SynergyId.Arcane }, RoleId.Tank,     0,  80, 13, 40, 35, 1, 1.3f, 1.0f),
-                Def( 8, "夜行狙击手", 2, new[] { SynergyId.Ranger, SynergyId.Shadow },  RoleId.Marksman, 0,  55, 17, 20, 20, 3, 1.4f, 1.0f),
-                Def( 9, "弓卫侍从",   2, new[] { SynergyId.Crown, SynergyId.Ranger },   RoleId.Marksman, 0,  60, 15, 25, 25, 3, 1.2f, 1.0f),
-                Def(10, "随军牧师",   2, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     0,  65, 12, 25, 30, 2, 1.3f, 1.0f),
+                Def( 6, "暗狼刺客",   2, new[] { SynergyId.Brute, SynergyId.Shadow },   RoleId.Assassin, 0,  620, 55, 36, 36, 1, 1.0f, 0.9f),
+                Def( 7, "符文守卫",   2, new[] { SynergyId.Bulwark, SynergyId.Arcane }, RoleId.Tank,     0,  780, 42, 45, 42, 1, 1.3f, 1.0f),
+                Def( 8, "夜行狙击手", 2, new[] { SynergyId.Ranger, SynergyId.Shadow },  RoleId.Marksman, 0,  640, 53, 35, 37, 3, 1.4f, 1.0f),
+                Def( 9, "弓卫侍从",   2, new[] { SynergyId.Crown, SynergyId.Ranger },   RoleId.Marksman, 0,  660, 50, 37, 38, 3, 1.2f, 1.0f),
+                Def(10, "随军牧师",   2, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     0,  670, 44, 36, 42, 2, 1.3f, 1.0f),
 
-                Def(11, "战团督军",   3, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Warrior,  1, 150, 22, 45, 35, 1, 1.2f, 1.0f, maxMana: 60),
-                Def(12, "王家神射",   3, new[] { SynergyId.Ranger, SynergyId.Crown },   RoleId.Marksman, 2,  90, 26, 25, 25, 4, 1.3f, 1.0f, maxMana: 60),
-                Def(13, "战地法师",   3, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     3,  85, 14, 25, 35, 2, 1.5f, 1.0f, maxMana: 60),
+                Def(11, "战团督军",   3, new[] { SynergyId.Brute, SynergyId.Bulwark },  RoleId.Warrior,  1,  950, 65, 48, 44, 1, 1.2f, 1.0f, maxMana: 60),
+                Def(12, "王家神射",   3, new[] { SynergyId.Ranger, SynergyId.Crown },   RoleId.Marksman, 2,  820, 70, 40, 41, 4, 1.3f, 1.0f, maxMana: 60),
+                Def(13, "战地法师",   3, new[] { SynergyId.Arcane, SynergyId.Shadow },  RoleId.Mage,     3,  840, 55, 40, 48, 2, 1.5f, 1.0f, maxMana: 60),
 
-                Def(14, "影刃",       4, new[] { SynergyId.Shadow, SynergyId.Ranger },  RoleId.Assassin, 4, 160, 32, 30, 25, 1, 0.9f, 0.8f, maxMana: 70),
-                Def(15, "铁甲巨兽",   4, new[] { SynergyId.Bulwark, SynergyId.Brute },  RoleId.Tank,     5, 320, 24, 60, 50, 1, 1.6f, 1.1f, maxMana: 70),
-                Def(16, "宫廷大法师", 4, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     6, 150, 18, 30, 40, 3, 1.5f, 1.0f, maxMana: 70),
+                Def(14, "影刃",       4, new[] { SynergyId.Shadow, SynergyId.Ranger },  RoleId.Assassin, 4, 1030, 85, 42, 40, 1, 0.9f, 0.8f, maxMana: 70),
+                Def(15, "铁甲巨兽",   4, new[] { SynergyId.Bulwark, SynergyId.Brute },  RoleId.Tank,     5, 1280, 62, 55, 52, 1, 1.6f, 1.1f, maxMana: 70),
+                Def(16, "宫廷大法师", 4, new[] { SynergyId.Crown, SynergyId.Arcane },  RoleId.Mage,     6, 1060, 64, 42, 52, 3, 1.5f, 1.0f, maxMana: 70),
 
-                Def(17, "圣殿之王",   5, new[] { SynergyId.Crown, SynergyId.Bulwark },  RoleId.Tank,     7, 500, 35, 70, 60, 1, 1.4f, 1.0f, maxMana: 80),
-                Def(18, "魔渊兽王",   5, new[] { SynergyId.Shadow, SynergyId.Brute },   RoleId.Warrior,  8, 450, 45, 50, 45, 1, 1.1f, 0.9f, maxMana: 80),
+                Def(17, "圣殿之王",   5, new[] { SynergyId.Crown, SynergyId.Bulwark },  RoleId.Tank,     7, 1580, 72, 60, 58, 1, 1.4f, 1.0f, maxMana: 80),
+                Def(18, "魔渊兽王",   5, new[] { SynergyId.Shadow, SynergyId.Brute },   RoleId.Warrior,  8, 1400, 100, 50, 46, 1, 1.1f, 0.9f, maxMana: 80),
             };
 
             // 速记工厂：族标签/职业/技能 + hp/atk/armor(双抗同值)/range/间隔 + 可选蓝条（3 费+）；
