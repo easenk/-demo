@@ -59,12 +59,20 @@ namespace AutoChess.Tests
         public void Table_Default_HasFourDirectionalEntries()
         {
             var t = BuffTable.Default;
-            Assert.AreEqual(4, t.All.Count, "占位四方向：攻击叠层 / DoT / Hot / 防御不叠层");
+            // 7c-2 起扩到 13 条：1~4 = 批次4 的四方向占位，5~13 = 技能附带 Buff（淬毒/硬皮/符文壁垒/战吼/强化/疾影/汲魔/圣愈/王权庇护）
+            Assert.AreEqual(13, t.All.Count, "四方向占位 + 9 条技能附带 Buff");
             Assert.AreEqual(90, t.Get(1).DurationTicks, "战意 3 秒 = 90 tick");
             Assert.AreEqual(3, t.Get(1).MaxStacks, "战意叠 3 层");
             Assert.AreEqual(1, t.Get(2).DotDamage, "灼烧每 tick 1 点");
             Assert.AreEqual(1, t.Get(3).HotHeal, "回复每 tick 1 点");
             Assert.AreEqual(150, t.Get(4).DurationTicks, "石肤 5 秒 = 150 tick");
+            // 7c-2 技能附带条目抽查（结构锁：DoT 段 / 双抗修饰器 / Hot 段）
+            Assert.AreEqual(2, t.Get(5).DotDamage, "淬毒每 tick 2 点");
+            Assert.AreEqual(120, t.Get(5).DurationTicks, "淬毒 4 秒 = 120 tick");
+            Assert.AreEqual(180, t.Get(6).DurationTicks, "硬皮 6 秒 = 180 tick");
+            Assert.AreEqual(2, t.Get(6).Modifiers.Length, "硬皮 = 双抗两条修饰器");
+            Assert.AreEqual(3, t.Get(12).HotHeal, "圣愈每 tick 3 点");
+            Assert.AreEqual(300, t.Get(13).DurationTicks, "王权庇护 10 秒 = 300 tick");
         }
 
         // ── 挂载与叠层 ──

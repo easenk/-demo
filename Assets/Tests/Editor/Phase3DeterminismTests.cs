@@ -13,7 +13,7 @@ namespace AutoChess.Tests
     /// Buff（策略钩子驱动的灼烧 DoT）、战斗钩子（增伤乘区）。
     ///
     /// 场景（注入包 + 固定脚本，无决策器——操作序列写死，两 Session 必然同步）：
-    ///  · R1 奖励关：验收术士（带技能 3 奥术飞弹：魔法 / 基础 30 / 法强系数 40 / 施法距离 3）
+    ///  · R1 奖励关：验收术士（带技能 13 奥术飞弹：魔法 / 1 星基础 60 / 法强系数 55 / 施法距离 3 / 锚点中心 3x3）
     ///    vs 双挡位矿鼠（T1 装备矿 / T2 拆卸器矿）→ 必胜 → 掉两矿；
     ///  · R2 备战：捡装备矿（物理散件入包）→ 捡拆卸器矿（+2）→ 选策略「魔契」
     ///    （法术散件 + 拆卸器 ×1 + 增伤 20% 钩子 + 敌方灼烧钩子）
@@ -28,7 +28,7 @@ namespace AutoChess.Tests
     ///    拆卸器/装备槽/有效面板——阶段5 快照重演的地基）；
     ///  · 指纹验收（防空转假绿）：技能施法/装备四事件/矿两类奖励/策略选定/灼烧跳伤/增伤乘幅
     ///    各自必须在事件流里留痕，且关键数值精确锁定（攻 60 = 40+20、法强 108 = 100+8、
-    ///    拆卸器 4 = 开局 2 + 矿 2 + 策 1 - 卸 1、金币 10 = 3 - 1买 + 5胜 + 2策 - 5升 + 5胜 + 1连胜）。
+    ///    拆卸器 4 = 开局 2 + 矿 2 + 策 1 - 卸 1、金币 8 = 3 - 1买 + 5胜 + 2策 - 7升 + 5胜 + 1连胜）。
     /// </summary>
     [TestFixture]
     public class Phase3DeterminismTests
@@ -147,17 +147,17 @@ namespace AutoChess.Tests
             };
             var chars = new CharacterTable(new[]
             {
-                new CharacterDef(1, "验收术士", 1, casterStats, Array.Empty<SynergyId>(), RoleId.Mage, 3),
+                new CharacterDef(1, "验收术士", 1, casterStats, Array.Empty<SynergyId>(), RoleId.Mage, 13),
             });
 
             var enemies = new EnemyTable(new[]
             {
                 new EnemyRoundEntry(1, new[]
                 {
-                    // 200 血：3 次普攻（120）后剩 80 > 技能 70 → 首跳施法非致死（全值 70 上事件流，
-                    // 不吃 TakeDamage 的死亡截断——基准对照行的断言依据）
-                    new EnemySpawn("矿鼠甲", FoeStats(200, 0), new Pos(3, 4), 1, 1),   // T1 装备矿
-                    new EnemySpawn("矿鼠乙", FoeStats(200, 0), new Pos(5, 4), 2, 1),   // T2 拆卸器矿
+                    // 400 血：3 次普攻（120）后剩 280 > 技能 115 → 首跳施法非致死（全值 115 上事件流，
+                    // 不吃 TakeDamage 的死亡截断——基准对照行的断言依据；7c-2 数值下 200 血会被首跳截断）
+                    new EnemySpawn("矿鼠甲", FoeStats(400, 0), new Pos(3, 4), 1, 1),   // T1 装备矿
+                    new EnemySpawn("矿鼠乙", FoeStats(400, 0), new Pos(5, 4), 2, 1),   // T2 拆卸器矿
                 }),
                 new EnemyRoundEntry(2, new[]
                 {
@@ -233,7 +233,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0), "1 费棋：开局 3 金买得起（单角色全 1 费表 → 槽 0 恒有货）");
             int casterId = s.Bench[0].Id;
-            Assert.AreEqual(3, s.Bench[0].SkillId, "买的棋带技能 3（编表整链路）");
+            Assert.AreEqual(13, s.Bench[0].SkillId, "买的棋带技能 13（编表整链路）");
             Assert.IsTrue(s.PlaceOnBoard(casterId, new Pos(4, 2)));
             BattleToEnd(s);   // R1 奖励关：杀双鼠 → 掉 T1/T2 各一矿
 
@@ -327,8 +327,8 @@ namespace AutoChess.Tests
 
             // 技能：蓝 30 / 命中 +10 → 每 3 次出手一施法；两场战斗都有施法
             Assert.GreaterOrEqual(Count(log, "SkillCast|"), 2, "技能施法留痕（施法循环接进真实会话战斗）");
-            Assert.IsTrue(log.Any(l => l.StartsWith("SkillCast|", StringComparison.Ordinal) && l.Split('|')[2] == "3"),
-                "施的是技能 3 奥术飞弹");
+            Assert.IsTrue(log.Any(l => l.StartsWith("SkillCast|", StringComparison.Ordinal) && l.Split('|')[2] == "13"),
+                "施的是技能 13 奥术飞弹");
 
             // 装备四事件 + 背包快照
             Assert.AreEqual(3, Count(log, "Equipped|"), "穿戴三次（物理散件 / 法术散件 / 再穿回）");
@@ -351,10 +351,10 @@ namespace AutoChess.Tests
             // Buff：灼烧 DoT 跳伤（SourceUnitId=0 = 无攻击者的持续伤害、1 点/跳）≥ 30 跳
             Assert.GreaterOrEqual(CountDotTicks(log), 30, "灼烧 DoT 留痕（策略钩子驱动 BuffSystem 的生产接线）");
 
-            // 战斗钩子（增伤 20%）实证：普攻 69→83（R2）；R1 无钩子时技能 70（基准对照）
+            // 战斗钩子（增伤 20%）实证：普攻 69→83（R2）；R1 无钩子时技能 115（基准对照）
             Assert.IsTrue(HasDamageValue(log, 83), "增伤乘区实证：普攻 (40+20)×1.15=69 × 1.2 → 83");
-            Assert.IsTrue(HasDamageValue(log, 88), "增伤乘区实证：技能 (30 + 40×108/100=73) × 1.2 → 88");
-            Assert.IsTrue(HasDamageValue(log, 70), "R1 无钩子基准：技能 30 + 40×100/100 = 70（乘区不凭空生效）");
+            Assert.IsTrue(HasDamageValue(log, 143), "增伤乘区实证：技能 (60 + 55×108/100=119.4→119) × 1.2 → 143");
+            Assert.IsTrue(HasDamageValue(log, 115), "R1 无钩子基准：技能 60 + 55×100/100 = 115（乘区不凭空生效）");
 
             // 终局精确账目（占位数值锁死——改表必红，逼着同步改测试与文档）
             Unit caster = s.PlayerBoard[0];

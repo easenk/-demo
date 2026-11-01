@@ -12,6 +12,8 @@ namespace AutoChess.Game
     ///   DamageFormula 拿到的是整数基础值（和普攻的 AttackPower 同级），后续乘区再在它自己末尾取整一次。
     ///
     /// 纯函数：同技能 + 同星级 + 同面板 → 同伤害，无随机、无状态。
+    /// 7c-2 注：纯 buff 技能（HasDamageSegment = false）不经过本函数——施法循环跳过伤害结算；
+    /// 保底 1 纪律不变（对"零基础值但有系数段"的伤害技能仍有意义）。
     /// </summary>
     public static class SkillDamage
     {

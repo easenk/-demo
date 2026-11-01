@@ -218,7 +218,9 @@ namespace AutoChess.Game
             LastBattleSeed = (uint)_random.NextInt(1, int.MaxValue);
 
             // 5. 每场一个新 CombatSystem（目标锁定/进度条账本随构造新生，绝不跨场残留）
-            _combat = new CombatSystem(_board, _bus, LastBattleSeed, skills: _tables.Skills);   // 批次2：技能表注入（null = 全场不施法）
+            //    批次2：技能表注入（null = 全场不施法）；7c-2：Buff 表注入——合并 null 到 Default
+            //    是有意为之（生产兜底：技能在场则战斗内 Buff 管线就该在场；旧注入包未设 Buffs 字段零改动）
+            _combat = new CombatSystem(_board, _bus, LastBattleSeed, skills: _tables.Skills, buffs: _tables.Buffs ?? BuffTable.Default);
 
             // 6. 羁绊钩子开战注册（#22④ 唯一入口；快照激活档 + 开战瞬间冻结的成员名单）
             _synergy.RegisterBattleHooks(_combat, _board);

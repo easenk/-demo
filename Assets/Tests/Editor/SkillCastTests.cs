@@ -18,6 +18,7 @@ namespace AutoChess.Tests
     ///  · 技能伤害走 DamageFormula 同一条乘区管线：魔法走法抗（护甲无效）、真实不打折、物理可暴击
     ///  · 出手前钩子（改伤四乘区）/受伤后/死亡钩子对施法照常触发；OnAfterAttack（普攻收尾）不对施法触发
     ///  · 敌方怪可配技能（编成表 SkillId → Session 生成 Unit 时带技能 id）
+    ///  · 7c-2 起 v2 规则（多目标/形状/纯 buff/附带 Buff）的契约在 SkillCastV2Tests 锁——本文件锁 v1 单体口径的回归
     /// </summary>
     [TestFixture]
     public class SkillCastTests
@@ -80,8 +81,8 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            // 战地法师技能（id 3）：魔法、1 星基础 30、法强系数 40、施法距离 3
-            var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 3);
+            // 战地法师技能（id 13 奥术飞弹）：魔法、1 星基础 60、法强系数 55、施法距离 3、锚点中心 3x3
+            var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
             Assert.IsTrue(board.TryPlace(dummy, new Pos(3, 3)));   // 切比雪夫距离 2 ≤ 施法距离 3；普攻射程 5 也够得着
@@ -101,13 +102,13 @@ namespace AutoChess.Tests
 
             Assert.AreEqual(1, casts.Count, "蓝满 + 有技能 + 在施法距离内 → 首个行动位施法");
             Assert.AreEqual(caster.Id, casts[0].CasterId);
-            Assert.AreEqual(3, casts[0].SkillId);
+            Assert.AreEqual(13, casts[0].SkillId);
             Assert.AreEqual(dummy.Id, casts[0].TargetId);
             Assert.IsFalse(casts[0].IsCrit, "魔法技能不可暴击");
             Assert.AreEqual(0, attacks.Count, "施法占据行动位：该 tick 没有普攻（普攻射程够得着也没出手）");
             Assert.AreEqual(1, damages.Count);
             Assert.AreEqual(dummy.Id, damages[0].UnitId);
-            Assert.AreEqual(70, damages[0].FinalDamage, "1 星战地法师：30 + 40×100/100 = 70（法抗 0）");
+            Assert.AreEqual(115, damages[0].FinalDamage, "1 星战地法师：60 + 55×100/100 = 115（法抗 0）");
             Assert.AreEqual(0, caster.CurrentMana, "施法后清零");
             Assert.AreEqual(1, manas.Count, "战斗内只有清蓝一条蓝事件");
             Assert.AreEqual(0, manas[0].CurrentMana);
@@ -118,7 +119,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(armor: 500, mr: 40), bus);
             board.TryPlace(caster, new Pos(2, 2));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -129,7 +130,7 @@ namespace AutoChess.Tests
             var combat = new CombatSystem(board, bus, 11u, skills: SkillTable.Default);
             combat.Tick();
 
-            Assert.AreEqual(50, damages[0].FinalDamage, "魔法技能：70 × 100/(100+40) = 50（护甲 500 无关）");
+            Assert.AreEqual(82, damages[0].FinalDamage, "魔法技能：115 × 100/(100+40) = 82.14 → 82（护甲 500 无关）");
         }
 
         [Test]
@@ -137,11 +138,13 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            // 魔渊兽王技能（id 8）：真实、1 星基础 70、法强系数 35、施法距离 2
-            var caster = new Unit(1, 18, true, CasterStats(30), bus, 1, 8);
+            // 魔渊兽王技能（id 18 深渊裂击）：真实、1 星基础 100、攻击系数 90、自身行+列十字（形状即门禁）
+            var caster = new Unit(1, 18, true, CasterStats(30), bus, 1, 18);
             var dummy = new Unit(2, 0, false, DummyStats(armor: 500, mr: 500), bus);
             board.TryPlace(caster, new Pos(2, 2));
-            board.TryPlace(dummy, new Pos(4, 3));   // 切比雪夫距离 2 ≤ 施法距离 2
+            board.TryPlace(dummy, new Pos(4, 4));   // 敌方先合法摆进己方半场（row 3~5）
+            Assert.IsTrue(board.TryMove(dummy, new Pos(4, 2), mustStayInOwnHalf: false),
+                "战斗走位越境：把木桩挪进施法者所在行（十字/整行的形状即门禁——开战前模拟近战交战后回身斩）");
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -149,7 +152,7 @@ namespace AutoChess.Tests
             var combat = new CombatSystem(board, bus, 11u, skills: SkillTable.Default);
             combat.Tick();
 
-            Assert.AreEqual(105, damages[0].FinalDamage, "真实技能：70 + 35×100/100 = 105（双抗 500 全部无视）");
+            Assert.AreEqual(118, damages[0].FinalDamage, "真实技能：100 + 90×20/100 = 118（双抗 500 全部无视）");
         }
 
         [Test]
@@ -157,11 +160,13 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            // 战团督军技能（id 1）：物理、1 星基础 40、法强系数 35、施法距离 1
-            var caster = new Unit(1, 11, true, CasterStats(30, critChance: 100), bus, 1, 1);
+            // 战团督军技能（id 11 冲阵号令）：物理、1 星基础 70、攻击系数 130、自身整行（形状即门禁）
+            var caster = new Unit(1, 11, true, CasterStats(30, critChance: 100), bus, 1, 11);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 2));
-            board.TryPlace(dummy, new Pos(3, 3));   // 距离 1
+            board.TryPlace(dummy, new Pos(3, 3));   // 敌方先合法摆进己方半场
+            Assert.IsTrue(board.TryMove(dummy, new Pos(3, 2), mustStayInOwnHalf: false),
+                "把木桩挪进施法者所在行（整行剑刃的形状即门禁——整行全宽，距离不限）");
             caster.AddMana(30);
 
             var casts = new List<SkillCastEvent>();
@@ -173,7 +178,7 @@ namespace AutoChess.Tests
 
             Assert.AreEqual(1, combat.RollCount, "物理技能暴击率 > 0：施法恰好掷一次");
             Assert.IsTrue(casts[0].IsCrit, "暴击率 100% 必中");
-            Assert.AreEqual(113, damages[0].FinalDamage, "75 × 1.5 = 112.5 → 113（暴伤 +50%）");
+            Assert.AreEqual(144, damages[0].FinalDamage, "70 + 130×20/100 = 96，96 × 1.5 = 144（暴伤 +50%）");
         }
 
         [Test]
@@ -183,10 +188,12 @@ namespace AutoChess.Tests
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
-                var caster = new Unit(1, 11, true, CasterStats(30, critChance: 0), bus, 1, 1);
+                var caster = new Unit(1, 11, true, CasterStats(30, critChance: 0), bus, 1, 11);
                 var dummy = new Unit(2, 0, false, DummyStats(), bus);
                 board.TryPlace(caster, new Pos(2, 2));
-                board.TryPlace(dummy, new Pos(3, 3));
+                board.TryPlace(dummy, new Pos(3, 3));   // 敌方先合法摆进己方半场
+                Assert.IsTrue(board.TryMove(dummy, new Pos(3, 2), mustStayInOwnHalf: false),
+                    "把木桩挪进施法者所在行（整行剑刃的形状即门禁）");
                 caster.AddMana(30);
                 var casts = new List<SkillCastEvent>();
                 var damages = new List<UnitDamagedEvent>();
@@ -196,13 +203,13 @@ namespace AutoChess.Tests
                 combat.Tick();
                 Assert.AreEqual(0, combat.RollCount, "暴击率 0 不掷（D9：随机序列消耗点与行为一一对应）");
                 Assert.IsFalse(casts[0].IsCrit);
-                Assert.AreEqual(75, damages[0].FinalDamage, "40 + 35×100/100 = 75");
+                Assert.AreEqual(96, damages[0].FinalDamage, "70 + 130×20/100 = 96");
             }
             // (b) 魔法技能 + 暴击率 100：也不掷（只有物理可暴击）
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
-                var caster = new Unit(1, 13, true, CasterStats(30, critChance: 100), bus, 1, 3);
+                var caster = new Unit(1, 13, true, CasterStats(30, critChance: 100), bus, 1, 13);
                 var dummy = new Unit(2, 0, false, DummyStats(), bus);
                 board.TryPlace(caster, new Pos(2, 1));
                 board.TryPlace(dummy, new Pos(3, 3));
@@ -224,7 +231,7 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             // 施法距离 3、普攻射程 1、移动 10 秒一格（90 tick 内走不动）：目标距离 4 → 只能干等
-            var caster = new Unit(1, 13, true, CasterStats(30, range: 1, moveIv: 10f), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30, range: 1, moveIv: 10f), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(6, 4));   // 切比雪夫距离 4 > 施法距离 3
@@ -245,7 +252,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -287,7 +294,7 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             // 蓝条 20、命中回蓝 10：两次普攻打满；攻速 1 秒、射程 5（从开战就能打）
-            var caster = new Unit(1, 13, true, CasterStats(20, manaPerHit: 10, range: 5), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(20, manaPerHit: 10, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -311,7 +318,7 @@ namespace AutoChess.Tests
             {
                 $"A|{caster.Id}", $"D|{dummy.Id}|20", "M|10",       // 第 1 击（普攻伤害 = 攻 20）
                 $"A|{caster.Id}", $"D|{dummy.Id}|20", "M|20",       // 第 2 击：命中回蓝到满，本次普攻照常完成
-                $"C|{caster.Id}", $"D|{dummy.Id}|70", "M|0",        // 下个行动位施法：70 点魔法伤害 + 清蓝
+                $"C|{caster.Id}", $"D|{dummy.Id}|115", "M|0",       // 下个行动位施法：115 点魔法伤害 + 清蓝
             }), "打断语义：命中回满的当次普攻照常完成、下个行动位施法、施法后清零");
             Assert.AreEqual(0, caster.CurrentMana);
         }
@@ -344,7 +351,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -356,7 +363,7 @@ namespace AutoChess.Tests
             combat.AddHook(new ReductionHook());   // 守方减伤 +20%（铁壁 6 档同款机制）
             combat.Tick();
 
-            Assert.AreEqual(56, damages[0].FinalDamage, "技能伤害吃出手前钩子的减伤乘区：70 × (1-20%) = 56");
+            Assert.AreEqual(92, damages[0].FinalDamage, "技能伤害吃出手前钩子的减伤乘区：115 × (1-20%) = 92");
         }
 
         [Test]
@@ -364,7 +371,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -387,7 +394,7 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 3);
+            var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(hp: 50), bus);
             board.TryPlace(caster, new Pos(2, 1));
             board.TryPlace(dummy, new Pos(3, 3));
@@ -416,7 +423,7 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var player = new Unit(1, 0, true, DummyStats(), bus);       // 玩家侧木桩
-            var enemyCaster = new Unit(2, 0, false, CasterStats(30), bus, 1, 3);
+            var enemyCaster = new Unit(2, 0, false, CasterStats(30), bus, 1, 13);
             board.TryPlace(player, new Pos(2, 1));
             board.TryPlace(enemyCaster, new Pos(3, 3));
             enemyCaster.AddMana(30);
@@ -431,7 +438,7 @@ namespace AutoChess.Tests
             Assert.AreEqual(1, casts.Count);
             Assert.AreEqual(enemyCaster.Id, casts[0].CasterId, "敌方单位同样按行动位施法");
             Assert.AreEqual(player.Id, casts[0].TargetId);
-            Assert.AreEqual(70, damages[0].FinalDamage);
+            Assert.AreEqual(115, damages[0].FinalDamage);
         }
 
         [Test]
@@ -459,7 +466,7 @@ namespace AutoChess.Tests
                 {
                     new EnemyRoundEntry(1, new EnemySpawn[]
                     {
-                        new EnemySpawn("会施法的怪", casterFoe, new Pos(4, 4), 0, 1, skillId: 3),
+                        new EnemySpawn("会施法的怪", casterFoe, new Pos(4, 4), 0, 1, skillId: 13),
                     }),
                 }),
                 Synergies = SynergyTable.Default,
@@ -498,10 +505,11 @@ namespace AutoChess.Tests
                 bus.Subscribe<ManaChangedEvent>(e => log.Add($"M|{e.UnitId}|{e.CurrentMana}"));
 
                 var board = new BoardData(bus);
-                var player = new Unit(1, 13, true, CasterStats(30, abilityPower: 100, range: 5), bus, 1, 3);
-                var enemy = new Unit(2, 18, false, CasterStats(30, attackPower: 0, range: 5, moveIv: 1f), bus, 1, 8);
+                var player = new Unit(1, 13, true, CasterStats(30, abilityPower: 100, range: 5), bus, 1, 13);
+                var enemy = new Unit(2, 18, false, CasterStats(30, attackPower: 0, range: 5, moveIv: 1f), bus, 1, 18);
                 board.TryPlace(player, new Pos(2, 1));
-                board.TryPlace(enemy, new Pos(5, 4));   // 距离 3：玩家技能 3 距离够、敌方技能 8（距离 2）需先走近
+                board.TryPlace(enemy, new Pos(5, 4));   // 距离 3：玩家技能 13（锚点距离 3）够得着；
+                                                          // 敌方技能 18 是十字（形状即门禁）——玩家不在其行列，需走近才施法
                 player.AddMana(30);
                 enemy.AddMana(30);
 

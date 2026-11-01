@@ -19,6 +19,13 @@ namespace AutoChess.Game
     /// 批次3：战斗钩子骨架（阶段2-接口设计 5.2）——六挂点 + 按来源注册注销。
     /// 回归红线：无钩子注册时与阶段1 行为逐字节一致（掷骰序列/事件流/TickCount/RollCount 不变）——
     /// 所有分发先查 _hooks.Count，空表零副作用；CombatRules 本批不动（转钩子实现是阶段3 的事）。
+    ///
+    /// 7c-2（技能系统 v2）：施法循环支持 8 种目标规则 + 形状遍历 + 纯 buff 分支 + 附带 Buff；
+    /// BuffSystem 内建为战斗协作者（构造器可选参 BuffTable；null = 无 Buff 结算，直连测试的回归红线），
+    /// 每 tick 第 6.5 步驱动 TickAll（顺序焊死：回蓝 6 → Buff 6.5 → 钩子 7 → 胜负 8）；
+    /// 多目标逐个行主序结算、一次掷骰全目标共享暴击；施法附带 Buff 走内建 Buffs.Apply
+    /// （来源章 = ModSourceId.SkillBuffApplierBase + 技能 id；批次4 起测试钩子自建 BuffSystem 实例
+    /// 与内建账本是两本独立账，互不结算——既有测试形态零扰动）。
     /// </summary>
     public sealed class CombatSystem
     {
@@ -27,6 +34,7 @@ namespace AutoChess.Game
         private readonly GameRandom _random;
         private readonly CombatRules _rules;
         private readonly SkillTable _skills;   // 批次2：null = 无技能表——蓝满也永不施法（测试/未注入配置的兜底）
+        private readonly BuffSystem _buffs;     // 7c-2：战斗内 Buff 账本（null = 无 Buff 结算）；随本实例每场新生
 
         private readonly Dictionary<Unit, Unit> _lockedTarget = new Dictionary<Unit, Unit>(); // 目标锁定到死
         private readonly Dictionary<Unit, float> _attackBar = new Dictionary<Unit, float>();  // 攻击进度条
@@ -35,6 +43,7 @@ namespace AutoChess.Game
         private readonly List<Unit> _playerRoster = new List<Unit>();
         private readonly List<Unit> _enemyRoster = new List<Unit>();
         private readonly List<Unit> _targetScan = new List<Unit>();
+        private readonly List<Unit> _castTargets = new List<Unit>();  // 7c-2：施法作用名单（行主序，零分配复用）
 
         // ── 批次3：钩子账本 ──
         private readonly List<IBattleHook> _hooks = new List<IBattleHook>();
@@ -46,13 +55,14 @@ namespace AutoChess.Game
         private bool _ended;    // BattleEndedEvent 已发的执行印记（全程只发一次）
         private bool _started;  // OnBattleStart 已触发（首 tick 最前，一场只一次）
 
-        public CombatSystem(BoardData board, EventBus bus, uint seed = 0u, CombatRules rules = null, SkillTable skills = null)
+        public CombatSystem(BoardData board, EventBus bus, uint seed = 0u, CombatRules rules = null, SkillTable skills = null, BuffTable buffs = null)
         {
             _board = board ?? throw new ArgumentNullException(nameof(board));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _random = new GameRandom(seed);   // 唯一随机源；种子注入（铁律4）
             _rules = rules ?? new CombatRules();
             _skills = skills;                 // null = 无技能表：蓝满也永不施法
+            _buffs = buffs != null ? new BuffSystem(buffs, _bus) : null;   // null = 无 Buff 结算：技能附带 Buff 静默跳过
             _context = new BattleContext(this, _board, _random);
         }
 
@@ -69,6 +79,9 @@ namespace AutoChess.Game
 
         /// <summary>掷骰总次数。暴击率 0 的单位一次都不掷——随机序列消耗点与实际行为一一对应（D9）。</summary>
         public int RollCount => _rollCount;
+
+        /// <summary>战斗内 Buff 账本（7c-2；构造时未注入 Buff 表则为 null）。只读出口——测试/战绩查层数用。</summary>
+        public BuffSystem Buffs => _buffs;
 
         // ─────────────────────── 钩子注册与注销（批次3） ───────────────────────
 
@@ -136,6 +149,10 @@ namespace AutoChess.Game
 
             // 6. 每 tick 回蓝记账（批次5.5；术士被动）
             TickManaRegen();
+
+            // 6.5 ★战斗内 Buff 结算（7c-2 生产接线）：DoT → Hot → 计时递减 → 到期摘层——
+            //     与回蓝同为"每 tick 常规内容"，恒在钩子与胜负结算之前；无 Buff 表时零行为
+            _buffs?.TickAll();
 
             // 7. ★每 tick 结束钩子：属于"tick 的常规内容"——
             //    恒在胜负结算之前，BattleEndedEvent 依旧是本 tick 最后一条事件
@@ -301,11 +318,11 @@ namespace AutoChess.Game
         // ─────────────────────── 施法（批次2，阶段3-接口设计 4.3） ───────────────────────
 
         /// <summary>
-        /// 行动位施法判定：蓝满（CurrentMana == MaxMana，AddMana 已钳上限）+ 技能表里查得到技能
-        /// + 最近敌人在施法距离内 → 施法并返回 true（本行动位被施法占用）。
-        /// 任一条件不满足 → false（不扣蓝，落回普攻/移动逻辑）。
-        /// 目标选择按技能表 TargetRule 独立扫描（v1 只有 NearestEnemy，与索敌同套行主序规则），
-        /// 不读不写普攻的目标锁定账本；无随机（暴击掷骰在 PerformCast 内、出手才掷）。
+        /// 行动位施法判定（7c-2 v2）：蓝满（CurrentMana == MaxMana，AddMana 已钳上限）+ 技能表里查得到技能
+        /// + 按技能表 TargetRule 产生非空"作用名单"（门禁语义见 SkillTargetRule 注释）→ 施法并返回 true
+        /// （本行动位被施法占用）。任一条件不满足 → false（不扣蓝，落回普攻/移动逻辑）。
+        /// 目标选择独立扫描（与索敌同套行主序规则），不读不写普攻的目标锁定账本；
+        /// 无随机（暴击掷骰在 PerformCast 内、有伤害段才掷）。
         /// </summary>
         private bool TryPerformCast(Unit u)
         {
@@ -315,50 +332,203 @@ namespace AutoChess.Game
 
             SkillDef skill = _skills.Get(u.SkillId);
             if (skill.Id == 0) return false;
-            if (skill.TargetRule != SkillTargetRule.NearestEnemy) return false;   // v1 唯一目标规则
 
-            Unit target = AcquireNearestEnemy(u);
-            if (target == null) return false;
-            if (u.Pos.ChebyshevTo(target.Pos) > skill.CastRange) return false;    // 超距：不施法不扣蓝
+            if (!CollectCastTargets(u, skill)) return false;   // 门禁不过：不施法不扣蓝（名单为空即失败）
 
-            PerformCast(u, target, skill);
+            PerformCast(u, _castTargets, skill);
             return true;
         }
 
         /// <summary>
-        /// 施法一击：掷骰（物理技能才掷、暴击率 0 不掷——D9 口径延伸）→ 出手前钩子（与普攻共享唯一改伤挂点）
-        /// → 广播 SkillCastEvent → DamageFormula 结算 → 受伤后/死亡钩子 → 施法后清蓝。
+        /// 按目标规则产生施法作用名单（填 _castTargets，行主序；返回 false = 门禁不过，不改任何状态）。
+        /// 门禁两类 + 全局前置的完整口径见 SkillTargetRule 注释（7c-2 拍板）。
+        /// </summary>
+        private bool CollectCastTargets(Unit caster, in SkillDef skill)
+        {
+            _castTargets.Clear();
+            if (_board.CountOnBoard(!caster.IsPlayerSide) == 0) return false;   // 全局前置：敌方有人（清场后的余势行动位不施法）
+
+            switch (skill.TargetRule)
+            {
+                case SkillTargetRule.NearestEnemy:
+                {
+                    Unit t = AcquireNearestEnemy(caster);
+                    if (t == null || caster.Pos.ChebyshevTo(t.Pos) > skill.CastRange) return false;   // 超距：不施法不扣蓝
+                    _castTargets.Add(t);
+                    return true;
+                }
+                case SkillTargetRule.LowestHpEnemy:
+                {
+                    // 施法距离内筛生命最低（严格小于才替换——并列取行主序先扫到）
+                    Unit best = null;
+                    int bestHp = int.MaxValue;
+                    _board.CollectUnitsOnBoard(!caster.IsPlayerSide, _targetScan);
+                    for (int i = 0; i < _targetScan.Count; i++)
+                    {
+                        Unit t = _targetScan[i];
+                        if (caster.Pos.ChebyshevTo(t.Pos) > skill.CastRange) continue;
+                        if (t.CurrentHp < bestHp) { bestHp = t.CurrentHp; best = t; }
+                    }
+                    if (best == null) return false;
+                    _castTargets.Add(best);
+                    return true;
+                }
+                case SkillTargetRule.NearestEnemyShape:
+                {
+                    Unit anchor = AcquireNearestEnemy(caster);
+                    if (anchor == null || caster.Pos.ChebyshevTo(anchor.Pos) > skill.CastRange) return false;   // 锚点超距
+                    CollectUnitsInShape(!caster.IsPlayerSide, skill, anchor.Pos, caster.IsPlayerSide);
+                    return _castTargets.Count > 0;   // 锚点必在形状中心 → 恒真；防御性保留
+                }
+                case SkillTargetRule.SelfShape:
+                {
+                    // 形状即门禁：形状内无敌人 = 不施法不扣蓝（CastRange 不消费）
+                    CollectUnitsInShape(!caster.IsPlayerSide, skill, caster.Pos, caster.IsPlayerSide);
+                    return _castTargets.Count > 0;
+                }
+                case SkillTargetRule.Self:
+                    _castTargets.Add(caster);
+                    return true;
+                case SkillTargetRule.AllyHighestAttack:
+                {
+                    // 含自身（自己攻最高就 buff 自己）；严格大于才替换——并列取行主序先扫到
+                    Unit best = null;
+                    int bestAtk = int.MinValue;
+                    _board.CollectUnitsOnBoard(caster.IsPlayerSide, _targetScan);
+                    for (int i = 0; i < _targetScan.Count; i++)
+                    {
+                        int atk = _targetScan[i].EffectiveStats.AttackPower;
+                        if (atk > bestAtk) { bestAtk = atk; best = _targetScan[i]; }
+                    }
+                    if (best == null) return false;   // 理论不可达（自己在场上），防御性保留
+                    _castTargets.Add(best);
+                    return true;
+                }
+                case SkillTargetRule.AllyLowestHpRatio:
+                {
+                    // 生命"比例"最低：交叉相乘比较（整数精确，不做浮点除法）；严格小于才替换——并列取先扫到
+                    Unit best = null;
+                    int bestHp = 0, bestMax = 1;
+                    _board.CollectUnitsOnBoard(caster.IsPlayerSide, _targetScan);
+                    for (int i = 0; i < _targetScan.Count; i++)
+                    {
+                        Unit t = _targetScan[i];
+                        int max = GameMath.Max(1, t.EffectiveStats.MaxHp);
+                        if (best == null) { best = t; bestHp = t.CurrentHp; bestMax = max; continue; }
+                        if ((long)t.CurrentHp * bestMax < (long)bestHp * max)
+                        { best = t; bestHp = t.CurrentHp; bestMax = max; }
+                    }
+                    if (best == null) return false;   // 理论不可达（自己在场上），防御性保留
+                    _castTargets.Add(best);
+                    return true;
+                }
+                case SkillTargetRule.AllAllies:
+                {
+                    _board.CollectUnitsOnBoard(caster.IsPlayerSide, _castTargets);   // 含自身，行主序
+                    return _castTargets.Count > 0;   // 理论不可达 false，防御性保留
+                }
+                default:
+                    return false;   // 未知规则 = 不施法（防御）
+            }
+        }
+
+        /// <summary>收集形状内全部存活"敌方"单位（行主序；友方永不因形状被误伤——构造上只收对面）。</summary>
+        private void CollectUnitsInShape(bool enemySide, in SkillDef skill, Pos anchor, bool casterIsPlayer)
+        {
+            _board.CollectUnitsOnBoard(enemySide, _targetScan);
+            for (int i = 0; i < _targetScan.Count; i++)
+                if (IsInShape(skill, anchor, _targetScan[i].Pos, casterIsPlayer))
+                    _castTargets.Add(_targetScan[i]);
+        }
+
+        /// <summary>形状判定（纯函数；锚点必在自身形状内；HalfBoard = 施法者视角的敌方半场）。</summary>
+        private static bool IsInShape(in SkillDef skill, Pos anchor, Pos p, bool casterIsPlayer)
+        {
+            switch (skill.Shape)
+            {
+                case SkillShape.Box:
+                {
+                    // 奇数维完全对称；偶数维向右/向下多占一格（确定性约定，见 SkillShape 注释）；
+                    // 越界区间自然截断（棋盘外的格不存在的单位）
+                    int minX = anchor.X - (skill.ShapeWidth - 1) / 2;
+                    int maxX = minX + skill.ShapeWidth - 1;
+                    int minY = anchor.Y - (skill.ShapeHeight - 1) / 2;
+                    int maxY = minY + skill.ShapeHeight - 1;
+                    return p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY;
+                }
+                case SkillShape.FullRow:
+                    return p.Y == anchor.Y;
+                case SkillShape.FullColumn:
+                    return p.X == anchor.X;
+                case SkillShape.FullCross:
+                    return p.Y == anchor.Y || p.X == anchor.X;
+                case SkillShape.HalfBoard:
+                    return casterIsPlayer
+                        ? p.Y >= BoardData.Height - BoardData.PlayerHalfRows
+                        : p.Y < BoardData.PlayerHalfRows;
+                default:
+                    return false;   // Single 不会走到这里（形状规则校验已挡）
+            }
+        }
+
+        /// <summary>
+        /// 施法 v2（多目标 + 附带 Buff + 纯 buff 分支；名单已由 CollectCastTargets 产生，行主序）：
+        /// ① 有伤害段且物理且暴击率>0 → 掷骰一次，全部目标共享暴击结果（RollCount 口径：一次施法至多一掷）
+        /// ② 广播 SkillCastEvent（恰一条；TargetId = 名单首位 = 主目标——全部受作用者的可见变化
+        ///    由各自的 Damaged/Healed/Mana 事件承载，表现层事件契约零扰动）
+        /// ③ 逐目标：出手前钩子（每目标独立 draft）→ DamageFormula 同管线结算 → 受伤后钩子 → 击杀收尾
+        /// ④ 附带 Buff：对名单中存活者 Buffs.Apply（被击杀者不挂——毒不上尸体；
+        ///    无内建 BuffSystem 时静默跳过——伤害照常）
+        /// ⑤ 清蓝（保留型 KeepManaAfterCast = true 不清；true = 每个行动位连续施法）。
+        /// 纯 buff 技能（无伤害段）跳过 ①③：只 ②④⑤——无暴击掷骰、无伤害事件。
         /// 与普攻的差异（口径，测试焊死）：不回蓝（命中回蓝是普攻权益）、不触发 OnAfterAttack
         /// （普攻收尾钩子：吸血/叠层按词条口径是普攻专属）、不吃 CombatRules 普攻吸血。
         /// </summary>
-        private void PerformCast(Unit caster, Unit target, SkillDef skill)
+        private void PerformCast(Unit caster, List<Unit> targets, SkillDef skill)
         {
+            bool hasDamage = skill.HasDamageSegment;
+
             bool isCrit = false;
-            if (SkillDamage.CanCrit(skill) && caster.EffectiveStats.CritChance > 0f)
+            if (hasDamage && SkillDamage.CanCrit(skill) && caster.EffectiveStats.CritChance > 0f)
             {
                 _rollCount++;
                 isCrit = _random.RollPercent(caster.EffectiveStats.CritChance);
             }
 
-            // ★出手前钩子：技能与普攻共享唯一可改伤挂点（穿透/增伤/减伤；暴击已掷定不改，D2-3）
-            var draft = new AttackDraft { Attacker = caster, Target = target, Type = skill.DamageType, IsCrit = isCrit };
-            if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
-
             // 时序契约：先出手（SkillCast），后见血（Damaged/Died 在 TakeDamage 内）
-            _bus.Publish(new SkillCastEvent(caster.Id, skill.Id, target.Id, isCrit));
+            _bus.Publish(new SkillCastEvent(caster.Id, skill.Id, targets[0].Id, isCrit));
 
-            int applied = CastDamage(caster, target, skill, isCrit, ToExtras(in draft));
-
-            // ★受伤后钩子（守方视角）：技能伤害同样是"承受了这次伤害"（致死也发）
-            if (_hooks.Count > 0)
-                DispatchOnDamaged(new DamageResult
+            if (hasDamage)
+            {
+                for (int i = 0; i < targets.Count; i++)
                 {
-                    Target = target, Source = caster,
-                    Damage = applied, CurrentHp = target.CurrentHp, Died = !target.IsAlive,
-                });
+                    Unit target = targets[i];
 
-            if (!target.IsAlive)
-                HandleKill(caster, target);
+                    // ★出手前钩子：技能与普攻共享唯一可改伤挂点（穿透/增伤/减伤；暴击已掷定不改，D2-3）
+                    var draft = new AttackDraft { Attacker = caster, Target = target, Type = skill.DamageType, IsCrit = isCrit };
+                    if (_hooks.Count > 0) DispatchOnBeforeAttack(ref draft);
+
+                    int applied = CastDamage(caster, target, skill, isCrit, ToExtras(in draft));
+
+                    // ★受伤后钩子（守方视角）：技能伤害同样是"承受了这次伤害"（致死也发）
+                    if (_hooks.Count > 0)
+                        DispatchOnDamaged(new DamageResult
+                        {
+                            Target = target, Source = caster,
+                            Damage = applied, CurrentHp = target.CurrentHp, Died = !target.IsAlive,
+                        });
+
+                    if (!target.IsAlive)
+                        HandleKill(caster, target);
+                }
+            }
+
+            // 附带 Buff（7c-2）：名单中存活者挂层；来源章 = 600 + 技能 id（ModSourceId 系统段子段）
+            if (skill.BuffId != 0 && _buffs != null)
+            {
+                for (int i = 0; i < targets.Count; i++)
+                    _buffs.Apply(targets[i], new BuffApplier(skill.BuffId, ModSourceId.SkillBuffApplierBase + skill.Id));
+            }
 
             // 施法后清零（保留型 KeepManaAfterCast = true 不清——v1 表全 false；true = 每个行动位连续施法）
             if (!skill.KeepManaAfterCast) caster.ClearMana();

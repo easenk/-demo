@@ -42,7 +42,8 @@ namespace AutoChess.Game
     /// 纪律（重要）：
     ///   回蓝两维只在"有蓝条"的棋子上生效——蓝条上限=施法阈值是同一个字段，
     ///   MaxMana=0 的单位连回蓝账本都不建（Unit.AddMana 静默返回）。
-    ///   所以 1~2 费棋子的面板回蓝恒 0（它们没有蓝条，见 CharacterTable 的数据纪律）。
+    ///   7c-2 起 Default 18 棋子**全员有蓝条**（推翻"1~2 费恒 0"旧纪律）——回蓝两维全员取职业表值；
+    ///   表外自建棋子仍可 MaxMana=0 = 无蓝条单位（两维挂 0，永不施法）。
     /// </summary>
     public readonly struct RoleDef
     {

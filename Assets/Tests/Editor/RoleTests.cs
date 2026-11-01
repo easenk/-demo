@@ -13,8 +13,9 @@ namespace AutoChess.Tests
     ///  · 职业表构造即校验：id 不能为 None、id 唯一、回蓝两维非负（fail fast，别让数据事故静默）
     ///  · 五职业 v1 数值：坦 5 / 战 10 / 刺 10 / 射 10 / 术 7+每秒 2
     ///  · 18 棋子每人一职，且职业全部在职业表里
-    ///  · 面板回蓝两维 = 职业表取值（职业是回蓝速率轴的唯一真源）；无蓝条单位恒 0
-    ///  · 蓝条纪律：3 费+ 有蓝条 + 有技能；1~2 费两者皆无
+    ///  · 面板回蓝两维 = 职业表取值（职业是回蓝速率轴的唯一真源）
+    ///  · 蓝条纪律（7c-2 修订，推翻"3 费+"旧纪律）：18 棋子**全员**有蓝条 + 有技能——
+    ///    1~2 费技能 = 纯 buff（拍板"1~2 费没有攻击技能"）；蓝条按费档：1费 30 / 2费 40 / 3费 60 / 4费 70 / 5费 80
     /// </summary>
     [TestFixture]
     public class RoleTests
@@ -129,15 +130,19 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void CharacterTable_SkillAndMana_OnlyForThreeCostPlus()
+        public void CharacterTable_SkillAndMana_EveryPieceHasBoth()
         {
+            // 7c-2 修订（推翻批次5.5"3 费+才有蓝条/技能"旧纪律）：全员有蓝条 + 有技能；
+            // 蓝条按费档锁死（1费 30 / 2费 40 / 3费 60 / 4费 70 / 5费 80）
+            int[] expectedMana = { 0, 30, 30, 30, 30, 30, 40, 40, 40, 40, 40, 60, 60, 60, 70, 70, 70, 80, 80 };
             foreach (var def in CharacterTable.Default.All)
             {
-                bool threePlus = def.Cost >= 3;
-                Assert.AreEqual(threePlus, def.BaseStats.MaxMana > 0,
-                    $"{def.DisplayName}（{def.Cost} 费）蓝条纪律：3 费+ 有蓝条、1~2 费恒无");
-                Assert.AreEqual(threePlus, def.SkillId > 0,
-                    $"{def.DisplayName}（{def.Cost} 费）技能纪律：3 费+ 有技能、1~2 费恒无");
+                Assert.Greater(def.BaseStats.MaxMana, 0,
+                    $"{def.DisplayName}（{def.Cost} 费）蓝条纪律：7c-2 起全员有蓝条");
+                Assert.Greater(def.SkillId, 0,
+                    $"{def.DisplayName}（{def.Cost} 费）技能纪律：7c-2 起全员有技能（1~2 费 = 纯 buff 技能）");
+                Assert.AreEqual(expectedMana[def.Id], def.BaseStats.MaxMana,
+                    $"{def.DisplayName} 蓝条费档分档锁");
             }
         }
 

@@ -7,7 +7,9 @@ namespace AutoChess.Game
     /// 换表只换这一包（阶段4 表现层从 SO 资产重建各表后注入，Session 永不认识 SO）。
     /// 批次7 版捆七表（阶段2 全量：角色/概率/回合/编成/羁绊/矿池/策略）；
     /// 阶段3 批次2 起捆八表（+技能表 Skills——施法循环的查表来源）；
-    /// 批次3 起捆九表（+装备表 Equipment——穿戴/升级/卖返还的查表来源；null = 无装备表，装备操作全拒）。
+    /// 批次3 起捆九表（+装备表 Equipment——穿戴/升级/卖返还的查表来源；null = 无装备表，装备操作全拒）；
+    /// 7c-2 起捆十表（+Buff 表 Buffs——技能附带 Buff 的查表来源与战斗内 Buff 管线的建账依据；
+    /// 旧注入包未设此字段时由 GameSession 合并到 BuffTable.Default——技能在场则 Buff 管线就该在场）。
     /// Default = 各表 Default 打包（测试基线与兜底，同 CharacterTable 双源模式）——表全部构造后只读，共享安全。
     /// </summary>
     public sealed class GameTables
@@ -21,6 +23,7 @@ namespace AutoChess.Game
         public PolicyTable Policies;
         public SkillTable Skills;
         public EquipmentTable Equipment;
+        public BuffTable Buffs;
 
         public static GameTables Default { get; } = new GameTables
         {
@@ -33,6 +36,7 @@ namespace AutoChess.Game
             Policies = PolicyTable.Default,
             Skills = SkillTable.Default,
             Equipment = EquipmentTable.Default,
+            Buffs = BuffTable.Default,
         };
     }
 }

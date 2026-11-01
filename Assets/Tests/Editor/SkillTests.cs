@@ -8,7 +8,8 @@ namespace AutoChess.Tests
     /// 阶段3 批次1：技能表 + 技能伤害纯函数（决策 #15）。
     ///
     /// 锁死的契约：
-    ///  · 技能表构造即校验：id 唯一且 ≥1、三档基础值非负、两系数非负、施法距离 ≥1 格
+    ///  · 技能表构造即校验：id 唯一且 ≥1、三档基础值非负、两系数非负、施法距离 ≥1 格；
+    ///    7c-2 追加五案（形状规则必带形状/单体友方规则禁形状/Box 宽高 ≥1/纯 buff 必带 BuffId/BuffId 与 BuffTarget 成对）
     ///  · 技能伤害 = 基础值(按星级) + 法强系数×法强/100 + 攻击力系数×攻击力/100，末尾取整一次、保底 1
     ///  · 法强基准 100（系数 150 = 150% 法强）
     ///  · 只有物理伤害可暴击（决策 #10）——魔法/真实技能不吃暴击乘区
@@ -35,11 +36,11 @@ namespace AutoChess.Tests
         // ─────────────────────── 技能表本身 ───────────────────────
 
         [Test]
-        public void SkillTable_Default_HasEightSkills()
+        public void SkillTable_Default_HasEighteenSkills()
         {
             var table = SkillTable.Default;
-            Assert.AreEqual(8, table.All.Count, "v1：3 费+ 的 8 个棋子各一条技能");
-            for (int id = 1; id <= 8; id++)
+            Assert.AreEqual(18, table.All.Count, "7c-2：18 棋子每人一技（技能 id 与棋子 id 对齐 1~18）");
+            for (int id = 1; id <= 18; id++)
                 Assert.AreNotEqual(0, table.Get(id).Id, $"技能 id {id} 必须存在");
         }
 
@@ -85,9 +86,60 @@ namespace AutoChess.Tests
         }
 
         [Test]
+        public void SkillTable_Constructor_RejectsBadV2Data()
+        {
+            // 7c-2 校验五案（构造即校验，别让建表事故静默）
+
+            // ① 形状规则必须带形状
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "锚点无形状", DamageType.Magic, 1, 1, 1, 0, 0, 3, SkillTargetRule.NearestEnemyShape, false),
+            }), "锚点形状规则必须带形状");
+
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "自身无形状", DamageType.Physical, 1, 1, 1, 0, 0, 1, SkillTargetRule.SelfShape, false),
+            }), "自身形状规则必须带形状");
+
+            // ② 单体/友方规则禁止带形状
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "单体带形状", DamageType.Physical, 1, 1, 1, 0, 0, 1, SkillTargetRule.NearestEnemy, false, SkillShape.FullRow),
+            }), "单体规则不能带形状");
+
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "友方带形状", DamageType.Physical, 0, 0, 0, 0, 0, 1, SkillTargetRule.AllAllies, false, SkillShape.Box, 3, 3, SkillDelivery.Instant, 13, SkillBuffTarget.Targets),
+            }), "友方规则不能带形状");
+
+            // ③ Box 宽高必须 ≥ 1
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "零宽Box", DamageType.Magic, 1, 1, 1, 0, 0, 3, SkillTargetRule.NearestEnemyShape, false, SkillShape.Box, 0, 3),
+            }), "Box 宽高必须 ≥ 1");
+
+            // ④ 纯 buff 技能必须带 BuffId
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "纯buff无挂载", DamageType.Physical, 0, 0, 0, 0, 0, 1, SkillTargetRule.Self, false),
+            }), "纯 buff 技能必须带 BuffId");
+
+            // ⑤ BuffId 与 BuffTarget=Targets 必须成对
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "有id无目标", DamageType.Physical, 0, 0, 0, 0, 0, 1, SkillTargetRule.Self, false, buffId: 6),
+            }), "有 BuffId 必须同时 BuffTarget=Targets");
+
+            Assert.Throws<ArgumentException>(() => new SkillTable(new[]
+            {
+                new SkillDef(1, "有目标无id", DamageType.Physical, 1, 1, 1, 0, 0, 1, SkillTargetRule.NearestEnemy, false, buffTarget: SkillBuffTarget.Targets),
+            }), "BuffTarget=Targets 必须同时带 BuffId");
+        }
+
+        [Test]
         public void SkillDef_BaseDamageForStar_RejectsOutOfRangeStar()
         {
-            var skill = SkillTable.Default.Get(3);
+            var skill = SkillTable.Default.Get(13);   // 奥术飞弹：60/90/135
             Assert.AreEqual(skill.BaseDamage1, skill.BaseDamageForStar(1));
             Assert.AreEqual(skill.BaseDamage2, skill.BaseDamageForStar(2));
             Assert.AreEqual(skill.BaseDamage3, skill.BaseDamageForStar(3));
@@ -100,23 +152,23 @@ namespace AutoChess.Tests
         [Test]
         public void SkillDamage_Formula_ExactLedger()
         {
-            // 战地法师（术 / 魔法）：基础 30/45/68，法强系数 40，攻击力系数 0
-            var skill = SkillTable.Default.Get(3);
+            // 战地法师（术 / 魔法）：7c-2 表 基础 60/90/135，法强系数 55，攻击力系数 0
+            var skill = SkillTable.Default.Get(13);
             var attacker = Attacker(abilityPower: 100, attackPower: 14);
 
-            // 法强基准 100 → 系数 40 = +40 点：30 + 40 = 70
-            Assert.AreEqual(70, SkillDamage.Compute(skill, 1, attacker), "1 星：30 + 40×100/100 = 70");
-            Assert.AreEqual(85, SkillDamage.Compute(skill, 2, attacker), "2 星：45 + 40 = 85");
-            Assert.AreEqual(108, SkillDamage.Compute(skill, 3, attacker), "3 星：68 + 40 = 108");
+            // 法强基准 100 → 系数 55 = +55 点：60 + 55 = 115
+            Assert.AreEqual(115, SkillDamage.Compute(skill, 1, attacker), "1 星：60 + 55×100/100 = 115");
+            Assert.AreEqual(145, SkillDamage.Compute(skill, 2, attacker), "2 星：90 + 55 = 145");
+            Assert.AreEqual(190, SkillDamage.Compute(skill, 3, attacker), "3 星：135 + 55 = 190");
         }
 
         [Test]
         public void SkillDamage_AbilityPowerScalesLinearly()
         {
-            var skill = SkillTable.Default.Get(3);
-            Assert.AreEqual(30, SkillDamage.Compute(skill, 1, Attacker(0, 14)), "法强 0 → 只剩基础值 30");
-            Assert.AreEqual(70, SkillDamage.Compute(skill, 1, Attacker(100, 14)), "法强 100 → +40");
-            Assert.AreEqual(110, SkillDamage.Compute(skill, 1, Attacker(200, 14)), "法强 200 → +80");
+            var skill = SkillTable.Default.Get(13);
+            Assert.AreEqual(60, SkillDamage.Compute(skill, 1, Attacker(0, 14)), "法强 0 → 只剩基础值 60");
+            Assert.AreEqual(115, SkillDamage.Compute(skill, 1, Attacker(100, 14)), "法强 100 → +55");
+            Assert.AreEqual(170, SkillDamage.Compute(skill, 1, Attacker(200, 14)), "法强 200 → +110");
         }
 
         [Test]
@@ -136,12 +188,12 @@ namespace AutoChess.Tests
         [Test]
         public void SkillDamage_IsPureFunction_SameInputSameOutput()
         {
-            var skill = SkillTable.Default.Get(8);
+            var skill = SkillTable.Default.Get(18);   // 深渊裂击：真实 / 3 星 225 / 攻击系数 90
             var attacker = Attacker(100, 45);
             int a = SkillDamage.Compute(skill, 3, attacker);
             int b = SkillDamage.Compute(skill, 3, attacker);
             Assert.AreEqual(a, b, "纯函数：无随机、无状态");
-            Assert.AreEqual(193, a, "魔渊兽王 3 星：158 + 35 = 193");
+            Assert.AreEqual(266, a, "魔渊兽王 3 星：225 + 90×45/100 = 265.5 → 远离零取整 266");
         }
 
         // ─────────────────────── 与伤害公式管线的对接 ───────────────────────
@@ -165,7 +217,7 @@ namespace AutoChess.Tests
             var defender = new UnitStats { Armor = 0, MagicResist = 0 };
 
             // 魔法技能：不吃暴击乘区（决策 #10）
-            var magic = SkillTable.Default.Get(3);
+            var magic = SkillTable.Default.Get(13);
             int baseMagic = SkillDamage.Compute(magic, 1, attacker);
             var magicInput = new DamageInput
             {
@@ -176,10 +228,10 @@ namespace AutoChess.Tests
                 Defender = defender,
                 IsCrit = true,   // 强行置真：魔法技能也不该吃暴击
             };
-            Assert.AreEqual(70, DamageFormula.Compute(magicInput), "魔法技能 IsCrit=true 也不加伤（0 抗性 → 系数 1）");
+            Assert.AreEqual(115, DamageFormula.Compute(magicInput), "魔法技能 IsCrit=true 也不加伤（0 抗性 → 系数 1）");
 
             // 物理技能：吃暴击乘区（基础 5% 暴击率出厂、暴伤 +50%）
-            var physical = SkillTable.Default.Get(1);
+            var physical = SkillTable.Default.Get(11);
             int basePhysical = SkillDamage.Compute(physical, 1, attacker);
             var physInput = new DamageInput
             {
@@ -190,7 +242,7 @@ namespace AutoChess.Tests
                 Defender = defender,
                 IsCrit = true,
             };
-            Assert.AreEqual(113, DamageFormula.Compute(physInput), "物理技能暴击：75 × 1.5 = 112.5 → 113");
+            Assert.AreEqual(132, DamageFormula.Compute(physInput), "物理技能暴击：70 + 130×14/100 = 88.2 → 88，88 × 1.5 = 132");
         }
     }
 }

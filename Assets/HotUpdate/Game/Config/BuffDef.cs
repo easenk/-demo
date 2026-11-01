@@ -99,8 +99,9 @@ namespace AutoChess.Game
         public BuffDef Get(int id) => _byId.TryGetValue(id, out var def) ? def : default;
 
         /// <summary>
-        /// 占位模板（D2-11）：四个方向各一条——攻击增益（叠层）、持续伤害（DoT）、
-        /// 持续治疗（Hot）、防御增益（不叠层）。数值 = 第一版锚点，平衡期重定。
+        /// 代码内置基线：1~4 = 批次4 的四个方向占位（攻击增益叠层 / DoT / Hot / 防御增益）；
+        /// 5~13 = 7c-2 技能附带 Buff（淬毒 + 各 1~2 费小 buff + 圣殿之王全队 buff）。
+        /// 数值 = 第一版锚点，平衡期随压测重定。
         /// </summary>
         private static BuffTable BuildDefault()
         {
@@ -118,6 +119,36 @@ namespace AutoChess.Game
                 // 4 防御增益·不叠层：5 秒护甲 +15
                 new BuffDef(4, "石肤", 150, 1,
                     new[] { new StatModifier(StatKind.Armor, StatOp.Flat, 15f) }, 0, 0),
+
+                // ── 7c-2 技能附带 Buff（5~13；名字占位、数值 = 第一版锚点随压测重定）──
+                // 5 淬毒（影刃·影袭附带）：4 秒每 tick 2 真实（总量 240）；封顶 1 层不刷新（与灼烧同构——旧毒掉完再挂新毒）
+                new BuffDef(5, "淬毒", 120, 1, null, 2, 0),
+                // 6 硬皮（野猪武士/民兵）：6 秒双抗 +25
+                new BuffDef(6, "硬皮", 180, 1,
+                    new[] { new StatModifier(StatKind.Armor, StatOp.Flat, 25f),
+                            new StatModifier(StatKind.MagicResist, StatOp.Flat, 25f) }, 0, 0),
+                // 7 符文壁垒（符文守卫）：6 秒双抗 +35（2 费坦的强档硬皮）
+                new BuffDef(7, "符文壁垒", 180, 1,
+                    new[] { new StatModifier(StatKind.Armor, StatOp.Flat, 35f),
+                            new StatModifier(StatKind.MagicResist, StatOp.Flat, 35f) }, 0, 0),
+                // 8 战吼（1 费射 ×2 自身）：5 秒攻击 +20%
+                new BuffDef(8, "战吼", 150, 1,
+                    new[] { new StatModifier(StatKind.AttackPower, StatOp.Percent, 20f) }, 0, 0),
+                // 9 强化（2 费射：夜行自身 / 弓卫递给攻最高队友）：5 秒攻击 +25%
+                new BuffDef(9, "强化", 150, 1,
+                    new[] { new StatModifier(StatKind.AttackPower, StatOp.Percent, 25f) }, 0, 0),
+                // 10 疾影（暗狼刺客自身）：4 秒攻击间隔 -30%（间隔负百分比 = 攻速提升；下限 0.1 由面板钳制承担）
+                new BuffDef(10, "疾影", 120, 1,
+                    new[] { new StatModifier(StatKind.AttackInterval, StatOp.Percent, -30f) }, 0, 0),
+                // 11 汲魔（巫术学徒自身）：4 秒每秒回蓝 +5——走既有 ManaRegenPerSecond 面板修饰器维，无新载体
+                new BuffDef(11, "汲魔", 120, 1,
+                    new[] { new StatModifier(StatKind.ManaRegenPerSecond, StatOp.Flat, 5f) }, 0, 0),
+                // 12 圣愈（随军牧师递给生命比例最低队友）：5 秒每 tick 3 点 Hot（总量 150 ≈ 1 费棋子 1/3 血）
+                new BuffDef(12, "圣愈", 150, 1, null, 0, 3),
+                // 13 王权庇护（圣殿之王·王权裁决，全队）：10 秒双抗 +30——5 费防御向终极的份量
+                new BuffDef(13, "王权庇护", 300, 1,
+                    new[] { new StatModifier(StatKind.Armor, StatOp.Flat, 30f),
+                            new StatModifier(StatKind.MagicResist, StatOp.Flat, 30f) }, 0, 0),
             });
         }
     }

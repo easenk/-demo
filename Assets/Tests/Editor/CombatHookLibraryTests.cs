@@ -205,7 +205,7 @@ namespace AutoChess.Tests
                 AttackRange = 5, AttackInterval = 1f, MoveInterval = 1f,
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
-            var caster = new Unit(1, 13, true, casterStats, bus, 1, 3);   // charId 13 = 战地法师；skillId 3（奥术飞弹）
+            var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
             Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
             caster.AddMana(30);   // 直充拉满 → 首行动位施法
             var enemy = Place(bus, board, 2, false, new Pos(2, 0), Stats(hp: 100000, atk: 0));   // 距离 1，施法距离 3 内
@@ -260,7 +260,7 @@ namespace AutoChess.Tests
                 AttackRange = 5, AttackInterval = 1f, MoveInterval = 1f,
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
-            var caster = new Unit(1, 13, true, casterStats, bus, 1, 3);   // charId 13 = 战地法师；skillId 3（奥术飞弹）
+            var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
             Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
             caster.AddMana(30);
             var enemy = Place(bus, board, 2, false, new Pos(3, 0), Stats(hp: 100000, atk: 0));
@@ -335,7 +335,7 @@ namespace AutoChess.Tests
                 AttackRange = 5, AttackInterval = 1f, MoveInterval = 1f,
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
-            var caster = new Unit(1, 13, true, casterStats, bus, 1, 3);   // charId 13 = 战地法师；skillId 3（奥术飞弹）
+            var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
             Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
             caster.AddMana(30);
             var enemy = Place(bus, board, 2, false, new Pos(3, 0), Stats(hp: 100000, atk: 0));
@@ -348,8 +348,8 @@ namespace AutoChess.Tests
             Assert.IsNotEmpty(casts, "施法发生");
             var hitsOnEnemy = damages.Where(d => d.UnitId == enemy.Id).ToList();
             Assert.IsNotEmpty(hitsOnEnemy);
-            // 技能基础 70（30 + 40×100/100）× 增伤 1.2 = 84
-            Assert.AreEqual(84, hitsOnEnemy[0].FinalDamage, "增伤钩子对技能伤害同样生效：70 × 1.2 = 84");
+            // 技能基础 115（60 + 55×100/100）× 增伤 1.2 = 138
+            Assert.AreEqual(138, hitsOnEnemy[0].FinalDamage, "增伤钩子对技能伤害同样生效：115 × 1.2 = 138");
         }
 
         // ── 7c-1 扩充：装备大件 v2 / 策略 v2 的效果钩子（穿戴者制 + 成员制类型增伤 + 起手蓝） ──

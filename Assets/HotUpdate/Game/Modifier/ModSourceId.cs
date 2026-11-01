@@ -18,6 +18,11 @@ namespace AutoChess.Game
         public const int SystemBase = 1;
         public const int SystemMax  = 999;
 
+        /// <summary>技能附带 Buff 的施加者来源章基址（系统段内子段，7c-2）：实际 id = 600 + 技能 id。
+        /// 与族面板段（族 id 1~6）、族叠层段（100+族 id）、Buff 修饰器章（BuffSystem.BuffSourceBase + Buff id = 501+）
+        /// 错开互不干扰；技能表开放，300 条内无碰撞。</summary>
+        public const int SkillBuffApplierBase = 600;
+
         /// <summary>装备段（1000~1999）：1000 + 槽位号。</summary>
         public const int EquipmentBase = 1000;
         public const int EquipmentMax  = 1999;
