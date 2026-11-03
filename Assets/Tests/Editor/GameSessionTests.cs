@@ -959,9 +959,9 @@ namespace AutoChess.Tests
             RunToPrep(s, 2);
             Assert.IsTrue(s.StartBattle());   // 空场 → 构造即终局判负（内联结算）
 
-            Assert.AreEqual(GameSession.StartHp - 5 + GameSession.PerBattleHpRegen, s.PlayerHp,
-                "DamageBase + 存活数 - 每场回血（2026-11-01：扣 5 回 2 = 净 -3）");
-            Assert.AreEqual(2, hp.Count, "扣血与每场回血各一条事件");
+            Assert.AreEqual(GameSession.StartHp - 5, s.PlayerHp,
+                "DamageBase + 存活数（扣 5 即净 -5；2026-11-02 拍板删除每场回血）");
+            Assert.AreEqual(1, hp.Count, "仅扣血一条事件");
             Assert.AreEqual(-5, hp[0].Delta);
             var r2 = ended.Last();
             Assert.AreEqual(2, r2.Round);
@@ -1116,15 +1116,15 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartPrep());
             PlayRound(s);   // R13 败 31
             Assert.IsTrue(s.StartPrep());
-            Assert.AreEqual(GameSession.StartHp - 62 + 2 * GameSession.PerBattleHpRegen, s.PlayerHp,
-                "两场惨败各扣 31、每场回 2（净 -29×2）");
+            Assert.AreEqual(GameSession.StartHp - 62, s.PlayerHp,
+                "两场惨败各扣 31（净 -31×2）");
             Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)), "R14 重新上场");
             PlayRound(s);
 
             var heal = hpEvents.Last();
             Assert.AreEqual(35, heal.Delta, "≤2700 步击杀 Boss → +35（#21⑨）");
-            Assert.AreEqual(79, s.PlayerHp, "42 + 2(每场回血) + 35 = 79");
-            Assert.AreEqual(RunRating.S, s.FinalRating, "79 ≥ 50 → S");
+            Assert.AreEqual(73, s.PlayerHp, "38 + 35 = 73");
+            Assert.AreEqual(RunRating.S, s.FinalRating, "73 ≥ 50 → S");
         }
 
         [Test]
@@ -1159,8 +1159,8 @@ namespace AutoChess.Tests
             Assert.Greater(s.Combat.TickCount, GameSession.BossTimeLimitTicks, "这场确实拖过了 90 秒线");
             var heal = hpEvents.Last();
             Assert.AreEqual(10, heal.Delta, "超时获胜只回 10（#21⑨）");
-            Assert.AreEqual(54, s.PlayerHp, "42 + 2(每场回血) + 10 = 54");
-            Assert.AreEqual(RunRating.S, s.FinalRating, "54 ≥ 50 → S（每场回血把老版本 48 的 A 抬过了 S 线）");
+            Assert.AreEqual(48, s.PlayerHp, "38 + 10 = 48");
+            Assert.AreEqual(RunRating.A, s.FinalRating, "48 < 50 → A（删除每场回血后回到评级线原位）");
         }
 
         [Test]
@@ -1221,9 +1221,9 @@ namespace AutoChess.Tests
 
             Assert.IsTrue(s.RunOver, "血尽终局");
             Assert.AreEqual(0, s.PlayerHp);
-            CollectionAssert.AreEqual(new[] { -27, 2, -27, 2, -27, 2, 2, -27 },
+            CollectionAssert.AreEqual(new[] { -27, -27, -27, -19 },
                 hpEvents.Select(e => e.Delta).ToArray(),
-                "27×3 场（各回 2）→ R5 豁免 0（回 2）→ 血 27 → R6 扣 32 钳 0（实扣 27、扣到 0 不再回血——终局不可逆）");
+                "27×3 场 → R5 豁免 0（无扣血事件）→ 血 19 → R6 扣 32 钳 0（实扣 19）");
             Assert.AreEqual(0, ended.First(e => e.Round == 5).DamageTaken, "奖励关败豁免在链路里成立");
             Assert.AreEqual(RunRating.C, s.FinalRating);
             Assert.AreEqual(5, finished[0].RoundsCompleted, "死于 R6 → 完成 5 回合");

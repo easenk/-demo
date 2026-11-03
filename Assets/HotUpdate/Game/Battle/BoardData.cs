@@ -20,12 +20,23 @@ namespace AutoChess.Game
         /// </summary>
         public const int PlayerHalfRows = 3;
 
-        private readonly EventBus _bus;
+        // 非readonly（批次A）：预演隔离（#23①）要求总线可重定向——开战改道战斗总线、结算归还。
+        // 写入口只有下面的 internal Bus（同程序集 GameSession 专用），其余用法与 readonly 等价。
+        private EventBus _bus;
         private readonly Unit[] _cells = new Unit[Width * Height];
 
         public BoardData(EventBus bus)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
+        }
+
+        /// <summary>事件总线重定向入口（internal = 同程序集 GameSession 专用；#23① 预演隔离，批次A）。
+        /// 开战时把棋盘改道战斗总线、结算时归还——战斗 tick 里的 Moved/Removed 只进战斗总线，
+        /// 不漏会话总线（防泄露 + 防跨线程）。传 null 抛（总线不可为空）。</summary>
+        internal EventBus Bus
+        {
+            get => _bus;
+            set => _bus = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         public bool IsInside(Pos c)

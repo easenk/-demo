@@ -623,20 +623,20 @@ namespace AutoChess.Tests
             int goldAfterPick = s.Eco.Gold;
             Assert.Greater(goldAfterPick, 0, "金币 +20 已入账");
 
-            // R2 普通关胜：胜也扣 4（A 案核心断言）+ 每场回血 2
+            // R2 普通关胜：胜也扣 4（A 案核心断言）
             PlayRound(s);
-            Assert.AreEqual(GameSession.StartHp - 4 + GameSession.PerBattleHpRegen, s.PlayerHp,
-                "胜场也扣战后血 4 点（每场回血 +2 同场结算：净 -2）");
+            Assert.AreEqual(GameSession.StartHp - 4, s.PlayerHp,
+                "胜场也扣战后血 4 点（净 -4）");
             Assert.AreEqual(0, ended.First(e => e.Round == 2).DamageTaken, "DamageTaken 保持战败惩罚原义（胜恒 0，策略代价不进此字段）");
 
-            // R3 强怪败：战败扣血（3+存活敌人数）+ 战后扣血 4 + 每场回血 2
+            // R3 强怪败：战败扣血（3+存活敌人数）+ 战后扣血 4
             Assert.IsTrue(s.StartPrep());
             PlayRound(s);   // R3 败（怪 200 攻 0.5s 一击秒 500 血？不——500 血 3 击；玩家 100 攻杀不死 500 血怪 → 败）
             var r3 = ended.First(e => e.Round == 3);
             Assert.IsFalse(r3.PlayerWon, "R3 战败");
             int battleLoss = r3.DamageTaken;   // 3 + 1 存活 = 4
-            Assert.AreEqual(GameSession.StartHp - 4 - battleLoss - 4 + 2 * GameSession.PerBattleHpRegen, s.PlayerHp,
-                $"R3 败 = 战败扣 {battleLoss} + 策略战后扣 4（R2/R3 各回 2）");
+            Assert.AreEqual(GameSession.StartHp - 4 - battleLoss - 4, s.PlayerHp,
+                $"R3 败 = 战败扣 {battleLoss} + 策略战后扣 4");
             var lastHpEvent = hp.Last(e => e.Delta < 0);
             Assert.AreEqual(-4, lastHpEvent.Delta, "策略战后扣血单独发一条 HpChangedEvent（表现层可区分'抽成'演出）");
         }

@@ -14,7 +14,9 @@ namespace AutoChess.Game
         // 这个常量靠注释盯——将来新增 StatKind 时记得同步改这里，否则 EffectiveStats 草稿纸越界。
         private const int KindCount = (int)StatKind.InitialMana + 1;
 
-        private readonly EventBus _bus;
+        // 非readonly（批次A）：预演隔离（#23①）要求总线可重定向——开战改道战斗总线、结算归还。
+        // 写入口只有下面的 internal Bus（同程序集 GameSession 专用），其余用法与 readonly 等价。
+        private EventBus _bus;
         private readonly UnitStats _baseStats;
         private readonly List<StatModifier> _modifiers = new List<StatModifier>();
         // 现算草稿纸（实例级复用，不逐次分配）；EffectiveStats 内部独占，无重入
@@ -70,6 +72,15 @@ namespace AutoChess.Game
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _maxHp = stats.MaxHp;
             CurrentHp = stats.MaxHp;
+        }
+
+        /// <summary>事件总线重定向入口（internal = 同程序集 GameSession 专用；#23① 预演隔离，批次A）。
+        /// 开战时把参战单位改道战斗总线、结算时归还——战斗 tick 里的 Damaged/Died/Healed/Mana/
+        /// MaxHpChanged 只进战斗总线，不漏会话总线（防泄露 + 防跨线程）。传 null 抛（总线不可为空）。</summary>
+        internal EventBus Bus
+        {
+            get => _bus;
+            set => _bus = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         // ── 修饰器账本（4.4）──

@@ -71,10 +71,6 @@ namespace AutoChess.Game
         public const int BossHealFast = 35;
         public const int BossHealSlow = 10;
 
-        /// <summary>每场战斗结束的固定回血（2026-11-01 拍板：全局血量容错托底——走结算即回，
-        /// 胜败都回、扣到 0 已终局的局不救；与 Boss 限时回血叠加）。</summary>
-        public const int PerBattleHpRegen = 2;
-
         /// <summary>开局拆卸器数（2026-10-29 拍板：送 2 个；掉落来源 = 晶矿/策略，批次6 接入）。</summary>
         public const int StartUnsmithTools = 2;
 
@@ -87,6 +83,7 @@ namespace AutoChess.Game
         private readonly ShopSystem _shop;
         private readonly SynergySystem _synergy;
         private readonly IdAllocator _ids;
+        private EventBus _battleBus;   // 非空 = 本场战斗事件走独立总线（#23① 预演隔离，批次A）；SettleBattle 归还时清空
 
         // ── 三份名册（2026-10-27 拍板：不再混存双方单位）──
         private readonly List<Unit> _bench = new List<Unit>();         // 备战席：玩家侧且不在场
@@ -200,15 +197,25 @@ namespace AutoChess.Game
         /// <summary>
         /// 开战：Prep → Battle（9.2 七步时间线）。门禁 = 非备战期 + 场上有未拾取晶矿（#17⑥）
         /// + 有待选策略（#18⑥）——两个门禁都是纯拒绝四不动，必须捡完/选完才能开战。
+        /// 批次A（#23① 预演隔离）：battleBus 非空 = 战斗事件全走该独立总线、会话总线战斗期静默
+        /// （防结果提前泄露 + 防跨线程污染）；null = 现状直传会话总线（既有调用点零改动）。
         /// </summary>
-        public bool StartBattle()
+        public bool StartBattle(EventBus battleBus = null)
         {
             // 1. 门禁：非备战期纯拒绝；场上有未拾取晶矿纯拒绝（#17⑥）；有待选策略纯拒绝（#18⑥）
             if (Phase != GamePhase.Prep) return false;
             if (_oresOnGround.Count > 0) return false;
             if (_policyCandidates.Count > 0) return false;
 
+            // 1.5 预演隔离接线（#23①，批次A）：battleBus 非空时晶矿记账改听战斗总线——
+            //     战斗期死亡只发往战斗总线（null 路径下记账仍在会话总线上听，零改动）；
+            //     OnUnitDied 的掉落广播随死亡同走战斗总线（进事件流，4U3 掉落动画随播放出现）。
+            //     放在门禁之后：失败纯拒绝时订阅与重定向都不发生。
+            _battleBus = battleBus;
+            if (battleBus != null) battleBus.Subscribe<UnitDiedEvent>(OnUnitDied);
+
             // 2. 遭遇生成：按编成表生成敌方（charId=0、IsPlayerSide=false、star=1），摆敌方半场
+            //    （敌方摆位事件仍走会话总线——战前布置，与玩家侧摆位同构，不属战斗事件）
             SpawnEncounter();
 
             // 3. 参战者快照：我方战场名单——EnterPrep 只拉回/复活/恢复他们
@@ -217,10 +224,21 @@ namespace AutoChess.Game
             // 4. 战斗种子：会话随机源开战瞬间抽 [1, int.MaxValue)（D2-6——战斗随机与会话随机分家）
             LastBattleSeed = (uint)_random.NextInt(1, int.MaxValue);
 
+            // 4.5 总线重定向（预演隔离的另一半接线，批次A）：参战单位（我方战场 + 敌方名册）与棋盘
+            //     的事件广播改道战斗总线——战斗 tick 里 Unit 发的 Damaged/Died/Healed/Mana/MaxHpChanged
+            //     与 BoardData 发的 Moved/Removed 全部只进战斗总线，不漏会话总线。
+            //     备战席不参战、战斗期零事件，不在改道之列；SettleBattle 顶部的归还块写回会话总线。
+            if (_battleBus != null)
+            {
+                for (int i = 0; i < _playerBoard.Count; i++) _playerBoard[i].Bus = _battleBus;
+                for (int i = 0; i < _enemyRoster.Count; i++) _enemyRoster[i].Bus = _battleBus;
+                _board.Bus = _battleBus;
+            }
+
             // 5. 每场一个新 CombatSystem（目标锁定/进度条账本随构造新生，绝不跨场残留）
             //    批次2：技能表注入（null = 全场不施法）；7c-2：Buff 表注入——合并 null 到 Default
             //    是有意为之（生产兜底：技能在场则战斗内 Buff 管线就该在场；旧注入包未设 Buffs 字段零改动）
-            _combat = new CombatSystem(_board, _bus, LastBattleSeed, skills: _tables.Skills, buffs: _tables.Buffs ?? BuffTable.Default);
+            _combat = new CombatSystem(_board, _battleBus ?? _bus, LastBattleSeed, skills: _tables.Skills, buffs: _tables.Buffs ?? BuffTable.Default);
 
             // 6. 羁绊钩子开战注册（#22④ 唯一入口；快照激活档 + 开战瞬间冻结的成员名单）
             _synergy.RegisterBattleHooks(_combat, _board);
@@ -265,6 +283,19 @@ namespace AutoChess.Game
         {
             if (Phase != GamePhase.Battle || _combat == null || !_combat.IsOver) return false;
 
+            // 0. 总线归还（预演隔离的收尾，批次A）：参战单位与棋盘的事件写回会话总线、
+            //    退订战斗总线上的晶矿记账——此后结算与备战事件全部回到会话总线（UI 正常订阅）。
+            //    SettleBattle 是排空闸门回调（#23）：战斗期结束的唯一出口；秒胜链（构造即终局的
+            //    内联结算）也经过这里，归还逻辑天然全覆盖。
+            if (_battleBus != null)
+            {
+                for (int i = 0; i < _playerBoard.Count; i++) _playerBoard[i].Bus = _bus;
+                for (int i = 0; i < _enemyRoster.Count; i++) _enemyRoster[i].Bus = _bus;
+                _board.Bus = _bus;
+                _battleBus.Unsubscribe<UnitDiedEvent>(OnUnitDied);
+                _battleBus = null;
+            }
+
             RoundDef roundDef = _tables.Rounds.Get(Round);
             bool won = _combat.PlayerWon;
             int enemySurvivors = _board.CountOnBoard(false);   // 战败扣血的"存活敌人数"（战斗结束、敌尸已清，现算即真值）
@@ -297,12 +328,6 @@ namespace AutoChess.Game
             //     表现层从 HpChangedEvent 区分"挨打演出"与"抽成演出"）
             for (int i = 0; i < _activePolicyHpCosts.Count; i++)
                 ApplyHpChange(-_activePolicyHpCosts[i].HpLoss);
-
-            // 2.6 每场战斗结束回复 2 血（2026-11-01 拍板：全局血量的容错托底层——
-            //     走结算即回复（含秒胜与败局）；顺序在败血之后——**扣到 0 的局不救**（终局不可逆：
-            //     血尽判负在本场已成立，回血跳过，第 7 步终局判定照常触发）；
-            //     胜败都回、封顶 100、满血静默。与终局 Boss 限时回血（#21⑨ 35/10）叠加）
-            if (PlayerHp > 0) ApplyHpChange(PerBattleHpRegen);
 
             // 3. 结算收入（#21①⑤）：先按"本场之前已通关精英数"入账（R6 场本身还是 5 金段位），
             //    精英胜才涨段（下一场起 +1；精英败档位不涨）
@@ -888,7 +913,9 @@ namespace AutoChess.Game
             _oreTierByUnitId.Remove(e.UnitId);
             var drop = new OreDrop(_ids.Next(), tier, e.Cell);
             _oresOnGround.Add(drop);
-            _bus.Publish(new OreDroppedEvent(drop.Id, drop.Tier, drop.Cell));
+            // 掉落广播随死亡走当前战斗总线（#23①，批次A）：null 路径 = 会话总线（现状零改动）；
+            // 预演路径 = 战斗总线（进事件流，4U3 掉落动画随播放出现；会话总线战斗期保持静默）
+            (_battleBus ?? _bus).Publish(new OreDroppedEvent(drop.Id, drop.Tier, drop.Cell));
         }
 
         // ─────────────────────── 策略三选一（批次7） ───────────────────────
