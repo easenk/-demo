@@ -28,6 +28,26 @@
 .codelyignore
 CODELY.md
 
+# === 素材与场景不入库（2026-11-04 拍板：git 只承载脚本/配置/文档）===
+# 背景：大体积资产 HTTPS 推送连续被掐（连接重置）——素材以本地盘（总库+Res 双份）为唯一载体，需磁盘级备份。
+# 克隆仓库=代码/配置/文档齐备；素材与场景全缺（打开工程需本地补齐资源），git 不是素材的异地备份。
+# 资源落位目录整目录忽略（含 .meta）：
+/[Aa]ssets/Res/Art/
+/[Aa]ssets/Res/Art.meta
+/[Aa]ssets/Res/Audio/
+/[Aa]ssets/Res/Audio.meta
+/[Aa]ssets/Res/Prefabs/
+/[Aa]ssets/Res/Prefabs.meta
+/[Aa]ssets/Res/UI/
+/[Aa]ssets/Res/UI.meta
+/[Aa]ssets/Res/Scenes/
+/[Aa]ssets/Res/Scenes.meta
+# 全工程场景文件视为资源（战台/开始界面等皆本地保存）：
+*.scene
+*.scene.meta
+*.unity
+*.unity.meta
+
 # === 以下为 Unity 官方标准模板 ===
 .utmp/
 /[Ll]ibrary/
