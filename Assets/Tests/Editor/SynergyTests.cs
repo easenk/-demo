@@ -250,8 +250,8 @@ namespace AutoChess.Tests
             var sys = NewSynergy(chars, bus);
             var roster = new List<Unit>();
             for (int i = 0; i < 6; i++)
-                roster.Add(Place(bus, board, i + 1, i + 1, true, new Pos(i, 0), Stats(100, 10)));
-            var outsider = Place(bus, board, 7, 7, true, new Pos(6, 0), Stats(100, 10));
+                roster.Add(Place(bus, board, i + 1, i + 1, true, new Pos(0, i), Stats(100, 10)));
+            var outsider = Place(bus, board, 7, 7, true, new Pos(1, 0), Stats(100, 10));
             roster.Add(outsider);
 
             sys.Recalculate(roster, board);
@@ -315,7 +315,7 @@ namespace AutoChess.Tests
 
             var a = Place(bus, board, 1, 1, true, new Pos(1, 1), Stats(200, 50));   // 暗影 A：离敌人最近（会被打缺血）
             var b = Place(bus, board, 2, 2, true, new Pos(0, 0), Stats(200, 50));   // 暗影 B：满血看戏
-            var enemy = Place(bus, board, 10, 0, false, new Pos(3, 3), Stats(1000, 30, atkIv: 0.5f));   // 半秒一击
+            var enemy = Place(bus, board, 10, 0, false, new Pos(4, 3), Stats(1000, 30, atkIv: 0.5f));   // 半秒一击
             var roster = Roster(a, b);
 
             sys.Recalculate(roster, board);
@@ -341,11 +341,11 @@ namespace AutoChess.Tests
             var sys = NewSynergy(chars, bus);
 
             // 杀手 K 近战贴脸（interval 2 秒 → 60 tick 首击），敌人先手把 K 打缺血，其余暗影还在走路
-            var k = Place(bus, board, 1, 1, true, new Pos(2, 2), Stats(200, 100, atkIv: 2f, range: 1));
+            var k = Place(bus, board, 1, 1, true, new Pos(3, 2), Stats(200, 100, atkIv: 2f, range: 1));
             Place(bus, board, 2, 2, true, new Pos(0, 0), Stats(200, 100, atkIv: 2f, range: 1));
             Place(bus, board, 3, 3, true, new Pos(1, 0), Stats(200, 100, atkIv: 2f, range: 1));
             Place(bus, board, 4, 4, true, new Pos(2, 0), Stats(200, 100, atkIv: 2f, range: 1));
-            Place(bus, board, 10, 0, false, new Pos(3, 3), Stats(100, 30, atkIv: 0.5f, range: 5));   // 敌 D：先手打 K（攻击力压到 30——避免与 K 首击同 tick 的刀刃判定）
+            Place(bus, board, 10, 0, false, new Pos(4, 3), Stats(100, 30, atkIv: 0.5f, range: 5));   // 敌 D：先手打 K（攻击力压到 30——避免与 K 首击同 tick 的刀刃判定）
             var roster = Roster(k,   // 其余三个暗影由上面 Place 返回，这里只需名册齐整——重取：
                 board.GetOccupant(new Pos(0, 0)), board.GetOccupant(new Pos(1, 0)), board.GetOccupant(new Pos(2, 0)));
 
@@ -376,14 +376,14 @@ namespace AutoChess.Tests
             var sys = NewSynergy(chars, bus);
 
             // 杀手 K：interval 0.5 秒（15 tick 首击，早于所有人）+ 离 D2 最近（会被 D2 打缺血）
-            var k = Place(bus, board, 1, 1, true, new Pos(2, 2), Stats(200, 100, atkIv: 0.5f));
+            var k = Place(bus, board, 1, 1, true, new Pos(3, 2), Stats(200, 100, atkIv: 0.5f));
             var s2 = Place(bus, board, 2, 2, true, new Pos(0, 0), Stats(200, 100));
             var s3 = Place(bus, board, 3, 3, true, new Pos(1, 0), Stats(200, 100));
             var s4 = Place(bus, board, 4, 4, true, new Pos(0, 1), Stats(200, 100));
             var s5 = Place(bus, board, 5, 5, true, new Pos(1, 1), Stats(200, 100));
             var s6 = Place(bus, board, 6, 6, true, new Pos(0, 2), Stats(200, 100));
-            var d1 = Place(bus, board, 10, 0, false, new Pos(3, 3), Stats(100, 0));      // 一击死的靶子
-            var d2 = Place(bus, board, 11, 0, false, new Pos(4, 3), Stats(1000, 50, atkIv: 0.3f));   // 打不死 + 会打 K
+            var d1 = Place(bus, board, 10, 0, false, new Pos(4, 3), Stats(100, 0));      // 一击死的靶子
+            var d2 = Place(bus, board, 11, 0, false, new Pos(5, 3), Stats(1000, 50, atkIv: 0.3f));   // 打不死 + 会打 K
             var roster = Roster(k, s2, s3, s4, s5, s6);
 
             sys.Recalculate(roster, board);
@@ -418,15 +418,15 @@ namespace AutoChess.Tests
                 new SynergyId[0]);
             var sys = NewSynergy(chars, bus);
 
-            var t = Place(bus, board, 1, 1, true, new Pos(3, 2), Stats(1000, 5, atkIv: 2f));   // 铁壁 T：E2 的目标
-            var n = Place(bus, board, 7, 7, true, new Pos(4, 2), Stats(1000, 5, atkIv: 2f));   // 非铁壁 N：E1 的目标
+            var t = Place(bus, board, 1, 1, true, new Pos(3, 1), Stats(1000, 5, atkIv: 2f));   // 铁壁 T：E2 的目标
+            var n = Place(bus, board, 7, 7, true, new Pos(3, 4), Stats(1000, 5, atkIv: 2f));   // 非铁壁 N：E1 的目标
             Place(bus, board, 2, 2, true, new Pos(0, 0), Stats(1000, 5, atkIv: 2f));
             Place(bus, board, 3, 3, true, new Pos(1, 0), Stats(1000, 5, atkIv: 2f));
             Place(bus, board, 4, 4, true, new Pos(2, 0), Stats(1000, 5, atkIv: 2f));
             Place(bus, board, 5, 5, true, new Pos(0, 1), Stats(1000, 5, atkIv: 2f));
             Place(bus, board, 6, 6, true, new Pos(1, 1), Stats(1000, 5, atkIv: 2f));
-            Place(bus, board, 10, 0, false, new Pos(7, 3), Stats(1000, 100, atkIv: 1f));   // E1：锁 N
-            Place(bus, board, 11, 0, false, new Pos(0, 5), Stats(1000, 100, atkIv: 1f));   // E2：并列锁 T（行主序先到）
+            Place(bus, board, 10, 0, false, new Pos(6, 5), Stats(1000, 100, atkIv: 1f));   // E1：锁 N（d3 < t 的 d4）
+            Place(bus, board, 11, 0, false, new Pos(5, 0), Stats(1000, 100, atkIv: 1f));   // E2：锁 T（d2 < n 的 d4）
             var roster = Roster(t, n,
                 board.GetOccupant(new Pos(0, 0)), board.GetOccupant(new Pos(1, 0)), board.GetOccupant(new Pos(2, 0)),
                 board.GetOccupant(new Pos(0, 1)), board.GetOccupant(new Pos(1, 1)));
@@ -453,15 +453,15 @@ namespace AutoChess.Tests
             var sys = NewSynergy(chars, bus);
 
             var a = Place(bus, board, 1, 1, true, new Pos(0, 0), Stats(1000, 10));
-            Place(bus, board, 2, 2, true, new Pos(1, 0), Stats(1000, 10));
-            Place(bus, board, 3, 3, true, new Pos(2, 0), Stats(1000, 10));
-            Place(bus, board, 4, 4, true, new Pos(3, 0), Stats(1000, 10));
-            Place(bus, board, 5, 5, true, new Pos(4, 0), Stats(1000, 10));
-            Place(bus, board, 6, 6, true, new Pos(5, 0), Stats(1000, 10));
-            Place(bus, board, 10, 0, false, new Pos(3, 3), Stats(100000, 0));   // 打不死的木桩
+            Place(bus, board, 2, 2, true, new Pos(0, 1), Stats(1000, 10));
+            Place(bus, board, 3, 3, true, new Pos(0, 2), Stats(1000, 10));
+            Place(bus, board, 4, 4, true, new Pos(0, 3), Stats(1000, 10));
+            Place(bus, board, 5, 5, true, new Pos(0, 4), Stats(1000, 10));
+            Place(bus, board, 6, 6, true, new Pos(0, 5), Stats(1000, 10));
+            Place(bus, board, 10, 0, false, new Pos(4, 3), Stats(100000, 0));   // 打不死的木桩
             var roster = Roster(a,
-                board.GetOccupant(new Pos(1, 0)), board.GetOccupant(new Pos(2, 0)),
-                board.GetOccupant(new Pos(3, 0)), board.GetOccupant(new Pos(4, 0)), board.GetOccupant(new Pos(5, 0)));
+                board.GetOccupant(new Pos(0, 1)), board.GetOccupant(new Pos(0, 2)),
+                board.GetOccupant(new Pos(0, 3)), board.GetOccupant(new Pos(0, 4)), board.GetOccupant(new Pos(0, 5)));
 
             sys.Recalculate(roster, board);
             var combat = new CombatSystem(board, bus, 11u);
@@ -506,7 +506,7 @@ namespace AutoChess.Tests
             var sys = NewSynergy(chars, bus);
             var roster = new List<Unit>();
             for (int id = 1; id <= 14; id++)
-                roster.Add(Place(bus, board, id, id, true, new Pos((id - 1) % 8, (id - 1) / 8), Stats(100, 10)));
+                roster.Add(Place(bus, board, id, id, true, new Pos((id - 1) % 4, (id - 1) / 4), Stats(100, 10)));
 
             sys.Recalculate(roster, board);
             var combat = new CombatSystem(board, bus, 11u);

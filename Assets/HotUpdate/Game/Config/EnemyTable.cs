@@ -16,7 +16,7 @@ namespace AutoChess.Game
         /// <summary>十三维整块面板——天然适配本工程伤害公式与修饰器（参考工程 6 维散字段不抄）。</summary>
         public readonly UnitStats Stats;
 
-        /// <summary>敌方半场（row 3~5）摆位。</summary>
+        /// <summary>敌方半场（列 X 4~7）摆位。</summary>
         public readonly Pos Cell;
 
         /// <summary>晶矿挡位：0 = 不掉（数据纪律：非奖励关条目一律 0，掉落判断不查回合类型——决策#17③）；1~3 = 低/中/高档。</summary>
@@ -71,7 +71,7 @@ namespace AutoChess.Game
     /// 敌方编成表（数据驱动关卡，同 RoundTable 定位；实例 + 可注入双源模式）。
     /// 构造即校验（fail fast）：回合号 > 0 且不重复、编成非空、面板合法、挡位/强度合法、格子界内——
     /// 建表事故在构造期炸掉，比战斗期炸便宜。
-    /// 半场归属（row 3~5）不在构造期校验：半场规则属 Battle 层（BoardData），
+    /// 半场归属（列 X 4~7）不在构造期校验：半场规则属 Battle 层（BoardData），
     /// 摆位失败由 Session 的"敌方半场首个空格"兜底接住（阶段2-接口设计 3.2）。
     /// </summary>
     public sealed class EnemyTable
@@ -143,6 +143,8 @@ namespace AutoChess.Game
         ///  · R14 最终 Boss（#20④）；R15 隐藏 Boss 不进表（#20⑤）。
         /// 敌方 CritChance=0、MaxMana=0 是表数据纪律（D2-7），不写死代码——将来想要会暴击/施法的怪 = 改表。
         /// 抗性 20~60 区间（百分比公式口径；挂起#6 正式区间 20~120）。
+        /// 摆位口径 = 左右分（2026-11-04 拍板：玩家 X0~3、敌方 X4~7；原前后分编成经
+        /// 新格=(X:4+(行-3), Y:横-2) 机械映射——前排贴中线 X4、纵深到 X6，列 7 暂留白给内容扩充）。
         /// </summary>
         private static EnemyTable BuildDefault()
         {
@@ -151,93 +153,93 @@ namespace AutoChess.Game
             // ── R1 奖励关：晶矿鼠 ×2（特殊怪：战力低、挡位 1、必掉）──
             t.Register(new EnemyRoundEntry(1, new EnemySpawn[]
             {
-                E("晶矿鼠", 180, 18, 20, new Pos(3, 4), oreTier: 1),
-                E("晶矿鼠", 180, 18, 20, new Pos(4, 4), oreTier: 1),
+                E("晶矿鼠", 180, 18, 20, new Pos(5, 1), oreTier: 1),
+                E("晶矿鼠", 180, 18, 20, new Pos(5, 2), oreTier: 1),
             }));
 
             // ── R2-4：普通关第一梯段（PowerLevel 1→2）──
             t.Register(new EnemyRoundEntry(2, new EnemySpawn[]
             {
-                E("野狼", 380, 30, 25, new Pos(3, 3)),
-                E("野狼", 380, 30, 25, new Pos(5, 3)),
+                E("野狼", 380, 30, 25, new Pos(4, 1)),
+                E("野狼", 380, 30, 25, new Pos(4, 3)),
             }));
             t.Register(new EnemyRoundEntry(3, new EnemySpawn[]
             {
-                E("石像傀儡", 430, 42, 30, new Pos(3, 3), powerLevel: 2),
-                E("石像傀儡", 430, 42, 30, new Pos(4, 4), powerLevel: 2),
-                E("石像傀儡", 430, 42, 30, new Pos(5, 3), powerLevel: 2),
+                E("石像傀儡", 430, 42, 30, new Pos(4, 1), powerLevel: 2),
+                E("石像傀儡", 430, 42, 30, new Pos(5, 2), powerLevel: 2),
+                E("石像傀儡", 430, 42, 30, new Pos(4, 3), powerLevel: 2),
             }));
             t.Register(new EnemyRoundEntry(4, new EnemySpawn[]
             {
-                E("幼龙", 620, 45, 30, new Pos(3, 3), moveInterval: 0.9f, powerLevel: 2),   // 幼龙会飞：走得快
-                E("幼龙", 620, 45, 30, new Pos(5, 3), moveInterval: 0.9f, powerLevel: 2),
-                E("石像傀儡", 750, 45, 30, new Pos(4, 4), powerLevel: 2),
+                E("幼龙", 620, 45, 30, new Pos(4, 1), moveInterval: 0.9f, powerLevel: 2),   // 幼龙会飞：走得快
+                E("幼龙", 620, 45, 30, new Pos(4, 3), moveInterval: 0.9f, powerLevel: 2),
+                E("石像傀儡", 750, 45, 30, new Pos(5, 2), powerLevel: 2),
             }));
 
             // ── R5 奖励关：晶矿魔偶 ×2（特殊怪：挡位 2）──
             t.Register(new EnemyRoundEntry(5, new EnemySpawn[]
             {
-                E("晶矿魔偶", 420, 22, 25, new Pos(3, 4), oreTier: 2),
-                E("晶矿魔偶", 420, 22, 25, new Pos(4, 4), oreTier: 2),
+                E("晶矿魔偶", 420, 22, 25, new Pos(5, 1), oreTier: 2),
+                E("晶矿魔偶", 420, 22, 25, new Pos(5, 2), oreTier: 2),
             }));
 
             // ── R6 精英关：兽人酋长压阵 + 两个石像傀儡护卫（战力检验门槛：二星过渡过得去、一星杂牌过不去）──
             t.Register(new EnemyRoundEntry(6, new EnemySpawn[]
             {
-                E("兽人酋长", 2100, 65, 45, new Pos(4, 5), powerLevel: 4),
-                E("石像傀儡", 520, 30, 30, new Pos(3, 3), powerLevel: 2),
-                E("石像傀儡", 520, 30, 30, new Pos(5, 3), powerLevel: 2),
+                E("兽人酋长", 2100, 65, 45, new Pos(6, 2), powerLevel: 4),
+                E("石像傀儡", 520, 30, 30, new Pos(4, 1), powerLevel: 2),
+                E("石像傀儡", 520, 30, 30, new Pos(4, 3), powerLevel: 2),
             }));
 
             // ── R7-9：普通关第二梯段（PowerLevel 3→4；轻中压分组：R7 轻、R8/R9 中）──
             t.Register(new EnemyRoundEntry(7, new EnemySpawn[]
             {
-                E("幽灵", 1050, 42, 30, new Pos(3, 3), attackInterval: 1.1f, powerLevel: 3),   // 幽灵出手快
-                E("幽灵", 1050, 42, 30, new Pos(4, 4), attackInterval: 1.1f, powerLevel: 3),
-                E("幽灵", 1050, 42, 30, new Pos(5, 3), attackInterval: 1.1f, powerLevel: 3),
+                E("幽灵", 1050, 42, 30, new Pos(4, 1), attackInterval: 1.1f, powerLevel: 3),   // 幽灵出手快
+                E("幽灵", 1050, 42, 30, new Pos(5, 2), attackInterval: 1.1f, powerLevel: 3),
+                E("幽灵", 1050, 42, 30, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),
             }));
             t.Register(new EnemyRoundEntry(8, new EnemySpawn[]
             {
-                E("幼龙", 1700, 62, 30, new Pos(3, 3), moveInterval: 0.9f, powerLevel: 3),
-                E("幼龙", 1700, 62, 30, new Pos(5, 3), moveInterval: 0.9f, powerLevel: 3),
-                E("石像巨人", 2300, 90, 40, new Pos(4, 5), attackInterval: 1.6f, powerLevel: 3),   // 巨人重拳慢
+                E("幼龙", 1700, 62, 30, new Pos(4, 1), moveInterval: 0.9f, powerLevel: 3),
+                E("幼龙", 1700, 62, 30, new Pos(4, 3), moveInterval: 0.9f, powerLevel: 3),
+                E("石像巨人", 2300, 90, 40, new Pos(6, 2), attackInterval: 1.6f, powerLevel: 3),   // 巨人重拳慢
             }));
             t.Register(new EnemyRoundEntry(9, new EnemySpawn[]
             {
-                E("食人魔", 3000, 118, 40, new Pos(4, 4), attackInterval: 1.4f, powerLevel: 4),   // 准精英体格
-                E("幽灵", 1350, 62, 35, new Pos(3, 3), attackInterval: 1.1f, powerLevel: 3),
-                E("幽灵", 1350, 62, 35, new Pos(5, 3), attackInterval: 1.1f, powerLevel: 3),
+                E("食人魔", 3000, 118, 40, new Pos(5, 2), attackInterval: 1.4f, powerLevel: 4),   // 准精英体格
+                E("幽灵", 1350, 62, 35, new Pos(4, 1), attackInterval: 1.1f, powerLevel: 3),
+                E("幽灵", 1350, 62, 35, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),
             }));
 
             // ── R10 奖励关：晶矿魔偶 + 晶矿巨兽（特殊怪：混挡位示例 2/3——挡位按怪写死，#17③）──
             t.Register(new EnemyRoundEntry(10, new EnemySpawn[]
             {
-                E("晶矿魔偶", 850, 35, 30, new Pos(4, 4), oreTier: 2),
-                E("晶矿巨兽", 1050, 42, 35, new Pos(5, 3), oreTier: 3),
+                E("晶矿魔偶", 850, 35, 30, new Pos(5, 2), oreTier: 2),
+                E("晶矿巨兽", 1050, 42, 35, new Pos(4, 3), oreTier: 3),
             }));
 
             // ── R11 精英关：亡灵领主 + 幽灵护卫（低费流三星检验、速升流八一星难过）──
             t.Register(new EnemyRoundEntry(11, new EnemySpawn[]
             {
-                E("亡灵领主", 6000, 110, 55, new Pos(4, 5), powerLevel: 5),
-                E("幽灵", 1100, 48, 35, new Pos(3, 3), attackInterval: 1.1f, powerLevel: 3),
-                E("幽灵", 1100, 48, 35, new Pos(5, 3), attackInterval: 1.1f, powerLevel: 3),
+                E("亡灵领主", 6000, 110, 55, new Pos(6, 2), powerLevel: 5),
+                E("幽灵", 1100, 48, 35, new Pos(4, 1), attackInterval: 1.1f, powerLevel: 3),
+                E("幽灵", 1100, 48, 35, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),
             }));
 
             // ── R12-13：普通关第三梯段（PowerLevel 5；轻中压分组：R12 轻、R13 中）──
             t.Register(new EnemyRoundEntry(12, new EnemySpawn[]
             {
-                E("石像巨人", 1650, 70, 40, new Pos(3, 3), attackInterval: 1.6f, powerLevel: 5),
-                E("石像巨人", 1650, 70, 40, new Pos(5, 3), attackInterval: 1.6f, powerLevel: 5),
-                E("幽灵", 700, 52, 35, new Pos(2, 4), attackInterval: 1.1f, powerLevel: 4),
-                E("幽灵", 700, 52, 35, new Pos(6, 4), attackInterval: 1.1f, powerLevel: 4),
+                E("石像巨人", 1650, 70, 40, new Pos(4, 1), attackInterval: 1.6f, powerLevel: 5),
+                E("石像巨人", 1650, 70, 40, new Pos(4, 3), attackInterval: 1.6f, powerLevel: 5),
+                E("幽灵", 700, 52, 35, new Pos(5, 0), attackInterval: 1.1f, powerLevel: 4),
+                E("幽灵", 700, 52, 35, new Pos(5, 4), attackInterval: 1.1f, powerLevel: 4),
             }));
             t.Register(new EnemyRoundEntry(13, new EnemySpawn[]
             {
-                E("石像傀儡", 1600, 98, 45, new Pos(3, 3), powerLevel: 5),
-                E("石像巨人", 1800, 100, 45, new Pos(4, 5), attackInterval: 1.6f, powerLevel: 5),
-                E("幽灵", 850, 77, 40, new Pos(5, 3), attackInterval: 1.1f, powerLevel: 5),
-                E("幼龙", 850, 77, 40, new Pos(6, 4), moveInterval: 0.9f, powerLevel: 5),
+                E("石像傀儡", 1600, 98, 45, new Pos(4, 1), powerLevel: 5),
+                E("石像巨人", 1800, 100, 45, new Pos(6, 2), attackInterval: 1.6f, powerLevel: 5),
+                E("幽灵", 850, 77, 40, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 5),
+                E("幼龙", 850, 77, 40, new Pos(5, 4), moveInterval: 0.9f, powerLevel: 5),
             }));
 
             // ── R14 最终 Boss：深渊魔王 + 幽灵仪仗（血量 = 压测校准项：7b 首跑 10000 → P50 1687 校至 11500；
@@ -245,9 +247,9 @@ namespace AutoChess.Game
             //    7c-2 技能系统落地后随终验统一校准）──
             t.Register(new EnemyRoundEntry(14, new EnemySpawn[]
             {
-                E("深渊魔王", 13000, 140, 60, new Pos(4, 5), attackInterval: 1.5f, powerLevel: 6),
-                E("幽灵", 750, 52, 35, new Pos(3, 4), attackInterval: 1.1f, powerLevel: 4),
-                E("幽灵", 750, 52, 35, new Pos(5, 4), attackInterval: 1.1f, powerLevel: 4),
+                E("深渊魔王", 13000, 140, 60, new Pos(6, 2), attackInterval: 1.5f, powerLevel: 6),
+                E("幽灵", 750, 52, 35, new Pos(5, 1), attackInterval: 1.1f, powerLevel: 4),
+                E("幽灵", 750, 52, 35, new Pos(5, 3), attackInterval: 1.1f, powerLevel: 4),
             }));
 
             return t;

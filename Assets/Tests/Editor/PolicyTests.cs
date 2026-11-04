@@ -125,7 +125,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, policies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);   // R1 奖励关胜 → _policyDue
             Assert.IsTrue(s.StartPrep(), "进 R2 备战（弹选发生在这里）");
             return s;
@@ -242,7 +242,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 30, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
             Assert.IsTrue(s.StartPrep(), "R1 败 → R2 备战");
             Assert.IsFalse(s.HasPolicyChoice, "奖励关败不弹选");
@@ -359,7 +359,7 @@ namespace AutoChess.Tests
             var inBattle = New(new EventBus(), Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(inBattle.StartRun());
             Assert.IsTrue(inBattle.Buy(0));
-            Assert.IsTrue(inBattle.PlaceOnBoard(inBattle.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(inBattle.PlaceOnBoard(inBattle.Bench[0].Id, new Pos(0, 0)));
             Assert.IsTrue(inBattle.StartBattle());
             Assert.IsFalse(inBattle.PickPolicy(0), "Battle 拒");
         }
@@ -486,7 +486,7 @@ namespace AutoChess.Tests
             });
             Assert.IsTrue(s2.StartRun());
             Assert.IsTrue(s2.Buy(0));
-            Assert.IsTrue(s2.PlaceOnBoard(s2.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s2.PlaceOnBoard(s2.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s2);
             Assert.IsTrue(s2.StartPrep(), "进 R2 备战弹选");
             Assert.IsTrue(s2.HasPolicyChoice, "单条表 → 有候选");
@@ -524,12 +524,12 @@ namespace AutoChess.Tests
             Assert.AreEqual(100, boardUnit.EffectiveStats.AttackPower, "下场后面板回原");
 
             // 重新上场：补挂（重算制，不是买入制）
-            Assert.IsTrue(s.PlaceOnBoard(boardUnit.Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(boardUnit.Id, new Pos(0, 0)));
             Assert.AreEqual(105, boardUnit.EffectiveStats.AttackPower, "上场补挂");
 
             // 备战席棋上场：同样吃到（人员变动触发重算）
             Assert.IsTrue(s.TakeOffBoard(boardUnit.Id));
-            Assert.IsTrue(s.PlaceOnBoard(benchUnit.Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(benchUnit.Id, new Pos(0, 0)));
             Assert.AreEqual(105, benchUnit.EffectiveStats.AttackPower, "换人上场：新上场者补挂");
             Assert.AreEqual(0, boardUnit.Modifiers.Count, "下场者被摘干净");
         }
@@ -578,7 +578,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             s.Eco.AddGold(50);
             BuyAny(s);   // id1 → 上场
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             BuyAny(s);   // id2 → 备战
             BuyAny(s);   // id3 → 备战；三张凑满 → 锚点=场上 id1，材料=备战 id2/id3（boardChanged=true）
             var merged = s.PlayerBoard.Single(u => u.Star == 2);
@@ -615,7 +615,7 @@ namespace AutoChess.Tests
                 SoloPolicy(PolicyEffect.HpCost(4), PolicyEffect.Gold(20))));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
 
             PlayRound(s);   // R1 奖励关胜
             Assert.IsTrue(s.StartPrep(), "R2 备战（弹选）");
@@ -687,7 +687,7 @@ namespace AutoChess.Tests
             var s = New(new EventBus(), Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, policies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);   // R1 奖励关胜（钩子策略未选——工厂从未被调）
             Assert.IsTrue(s.StartPrep());
             Assert.AreEqual(0, factoryCalls, "选定时刻不实例化——留存的只是工厂");
@@ -813,7 +813,7 @@ namespace AutoChess.Tests
                 SoloPolicy(PolicyEffect.LossShields(2))));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);   // R1 胜 → 弹选
             Assert.IsTrue(s.StartPrep());
             Assert.IsTrue(s.PickPolicy(0));

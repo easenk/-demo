@@ -156,7 +156,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, ores));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);   // 杀怪 → 掉 1 矿 → 结算
             Assert.AreEqual(1, s.OresOnGround.Count, "恰好掉一颗");
             oreId = s.OresOnGround[0].Id;
@@ -303,13 +303,13 @@ namespace AutoChess.Tests
             // 两只不同挡位的原地怪（range 5 对射不移动）→ 死在自己格上
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(30, 0, new Pos(3, 4), oreTier: 1, range: 5, name: "甲"),
+                Round(1, Foe(30, 0, new Pos(5, 3), oreTier: 1, range: 5, name: "甲"),
                        Foe(30, 0, new Pos(5, 4), oreTier: 3, range: 5, name: "乙")),
             });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
 
             Assert.AreEqual(2, s.OresOnGround.Count, "两只挡位怪全灭 → 恰掉两颗");
@@ -336,7 +336,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
 
             Assert.AreEqual(0, s.OresOnGround.Count, "挡位 0 的怪死不掉（账本只记 OreTier>0）");
@@ -355,7 +355,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 30, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);   // t15 敌一击秒玩家 → 敌胜
 
             Assert.IsFalse(s.Combat.PlayerWon, "玩家棋全灭 → 战败");
@@ -375,7 +375,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), EnemyTable.Default));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
 
             PlayRound(s);   // R1：杀两鼠 → 掉 2
             Assert.AreEqual(2, s.OresOnGround.Count, "R1 晶矿鼠必掉（100% 掉落）");
@@ -409,7 +409,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 30, atk: 30, range: 3), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
 
             Assert.IsFalse(s.Combat.PlayerWon, "B 反杀玩家 → 战败");
@@ -466,7 +466,7 @@ namespace AutoChess.Tests
             var inBattle = New(busy, Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(inBattle.StartRun());
             Assert.IsTrue(inBattle.Buy(0));
-            Assert.IsTrue(inBattle.PlaceOnBoard(inBattle.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(inBattle.PlaceOnBoard(inBattle.Bench[0].Id, new Pos(0, 0)));
             Assert.IsTrue(inBattle.StartBattle());
             Assert.AreEqual(GamePhase.Battle, inBattle.Phase);
             Assert.IsFalse(inBattle.PickOre(1), "Battle 拒");
@@ -521,13 +521,13 @@ namespace AutoChess.Tests
                 });
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(30, 0, new Pos(3, 4), oreTier: 1, range: 5, name: "低挡"),
+                Round(1, Foe(30, 0, new Pos(5, 3), oreTier: 1, range: 5, name: "低挡"),
                        Foe(30, 0, new Pos(5, 4), oreTier: 2, range: 5, name: "高挡")),
             });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, ores));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
             Assert.AreEqual(2, s.OresOnGround.Count, "两颗都在场");
             Assert.IsTrue(s.StartPrep(), "打完停 Settlement → 进 R2 备战后才能捡");
@@ -663,7 +663,7 @@ namespace AutoChess.Tests
             });
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
             Assert.IsTrue(s.StartPrep(), "进 R2 备战才能捡");
             int oreId = s.OresOnGround[0].Id;
@@ -697,7 +697,7 @@ namespace AutoChess.Tests
                     new EnemyTable(new[] { Round(1, Foe(30, 0, new Pos(4, 4), oreTier: 1, range: 5)) }), ores), 777u);
                 Assert.IsTrue(s.StartRun());
                 Assert.IsTrue(s.Buy(0));
-                Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+                Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
                 Assert.IsTrue(s.StartBattle());
                 int guard = 0;
                 while (!s.Combat.IsOver && guard++ < 6000) s.Combat.Tick();

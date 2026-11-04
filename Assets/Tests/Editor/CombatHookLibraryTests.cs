@@ -36,8 +36,8 @@ namespace AutoChess.Tests
         private static Unit Place(EventBus bus, BoardData board, int id, bool playerSide, Pos pos, UnitStats stats)
         {
             var u = new Unit(id, 0, playerSide, stats, bus);
-            // 摆位钳己方半场（玩家 row 0~2、敌方 row 3~5）——敌方必须摆 row 3~5，测试统一用 (1,4)/(3,4)
-            Pos cell = playerSide ? pos : new Pos(pos.X, pos.Y + 3);
+            // 摆位钳己方半场（左右分：玩家列 X 0~3、敌方列 X 4~7）——敌方按"逻辑坐标列 +4"落位
+            Pos cell = playerSide ? pos : new Pos(pos.X + 4, pos.Y);
             Assert.IsTrue(board.TryPlace(u, cell), $"摆位失败 {cell}");
             return u;
         }
@@ -52,7 +52,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 10000, atk: 0, armor: 60));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -74,7 +74,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 10000, atk: 0, armor: 60));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -96,7 +96,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 10000, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -117,9 +117,9 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
-            var enemyA = Place(bus, board, 2, false, new Pos(0, 1), Stats(hp: 10000, atk: 0));   // 成员（减伤）——最近目标（距离 1）
-            var enemyB = Place(bus, board, 3, false, new Pos(3, 1), Stats(hp: 10000, atk: 0));   // 非成员——远（距离 3），不被锁定
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
+            var enemyA = Place(bus, board, 2, false, new Pos(0, 1), Stats(hp: 10000, atk: 0));   // 成员（减伤）——离玩家更近，被锁定
+            var enemyB = Place(bus, board, 3, false, new Pos(3, 1), Stats(hp: 10000, atk: 0));   // 非成员——更远，不被锁定
 
             var combat = new CombatSystem(board, bus, 11u);
             combat.AddHook(new CombatHookLibrary.DamageReductionHook(new[] { enemyA }, 20f, ModSourceId.TestBase));
@@ -141,7 +141,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 10000, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -164,7 +164,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0, armor: 20));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -206,7 +206,7 @@ namespace AutoChess.Tests
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
             var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
-            Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
+            Assert.IsTrue(board.TryPlace(caster, new Pos(3, 1)));
             caster.AddMana(30);   // 直充拉满 → 首行动位施法
             var enemy = Place(bus, board, 2, false, new Pos(2, 0), Stats(hp: 100000, atk: 0));   // 距离 1，施法距离 3 内
 
@@ -231,7 +231,7 @@ namespace AutoChess.Tests
             var heals = new List<UnitHealedEvent>();
             bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 1000, atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 1000, atk: 100));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 50));   // 敌方 50 攻 → 玩家会掉血 → 吸血可回
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -261,9 +261,9 @@ namespace AutoChess.Tests
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
             var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
-            Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
+            Assert.IsTrue(board.TryPlace(caster, new Pos(3, 1)));
             caster.AddMana(30);
-            var enemy = Place(bus, board, 2, false, new Pos(3, 0), Stats(hp: 100000, atk: 0));
+            var enemy = Place(bus, board, 2, false, new Pos(1, 0), Stats(hp: 100000, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u, skills: SkillTable.Default);
             combat.AddHook(new CombatHookLibrary.LifestealHook(new[] { caster }, 12f, ModSourceId.TestBase));
@@ -284,7 +284,7 @@ namespace AutoChess.Tests
             var heals = new List<UnitHealedEvent>();
             bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 500, atk: 200));   // 2 击杀 300 血敌
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 500, atk: 200));   // 2 击杀 300 血敌
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 300, atk: 100));   // 敌方 100 攻 → 玩家先掉血再回
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -305,7 +305,7 @@ namespace AutoChess.Tests
             var heals = new List<UnitHealedEvent>();
             bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 500, atk: 200));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 500, atk: 200));
             var enemy = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 300, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -336,9 +336,9 @@ namespace AutoChess.Tests
                 CritChance = 0, CritDamage = 50, MaxMana = 30, ManaPerHit = 30, ManaRegenPerSecond = 0,
             };
             var caster = new Unit(1, 13, true, casterStats, bus, 1, 13);   // charId 13 = 战地法师；skillId 13（奥术飞弹）
-            Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
+            Assert.IsTrue(board.TryPlace(caster, new Pos(3, 1)));
             caster.AddMana(30);
-            var enemy = Place(bus, board, 2, false, new Pos(3, 0), Stats(hp: 100000, atk: 0));
+            var enemy = Place(bus, board, 2, false, new Pos(1, 0), Stats(hp: 100000, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u, skills: SkillTable.Default);
             combat.AddHook(new CombatHookLibrary.DamageAmpHook(20f, ModSourceId.TestBase));
@@ -362,7 +362,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             var weak = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 50, atk: 0, armor: 60));   // 首击 63 即死
             var enemy = Place(bus, board, 3, false, new Pos(2, 2), Stats(hp: 100000, atk: 0, armor: 60));
 
@@ -385,7 +385,7 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var player = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
+            var player = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
             Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 1000000, atk: 0));
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -410,7 +410,7 @@ namespace AutoChess.Tests
             var heals = new List<UnitHealedEvent>();
             bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
 
-            var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 10000, atk: 0));
+            var wearer = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 10000, atk: 0));
             Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 500));   // t39 首击 -500
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -430,7 +430,7 @@ namespace AutoChess.Tests
             var heals = new List<UnitHealedEvent>();
             bus.Subscribe<UnitHealedEvent>(e => heals.Add(e));
 
-            var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 10000, atk: 0));
+            var wearer = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 10000, atk: 0));
             Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 500));   // t39 重创（制造不满血）
 
             var combat = new CombatSystem(board, bus, 11u);
@@ -450,9 +450,9 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var wearer = Place(bus, board, 1, true, new Pos(2, 2), Stats(hp: 10000, atk: 0));    // 玩家排最前排（row 2）
-            var near = Place(bus, board, 2, false, new Pos(2, 0), Stats(hp: 10000, atk: 0));   // (2,3)：切比雪夫 1 → 圈内
-            var far = Place(bus, board, 3, false, new Pos(6, 1), Stats(hp: 8000, atk: 0));     // (6,4)：切比雪夫 4 → 圈外
+            var wearer = Place(bus, board, 1, true, new Pos(3, 2), Stats(hp: 10000, atk: 0));    // 玩家排最前排（中线列 X3）
+            var near = Place(bus, board, 2, false, new Pos(0, 2), Stats(hp: 10000, atk: 0));   // 实际 (4,2)：切比雪夫 1 → 圈内
+            var far = Place(bus, board, 3, false, new Pos(2, 2), Stats(hp: 8000, atk: 0));     // 实际 (6,2)：切比雪夫 3 → 圈外
 
             var combat = new CombatSystem(board, bus, 11u);
             combat.AddHook(new CombatHookLibrary.BurnAuraHook(wearer, 2.5f, 2, ModSourceId.TestBase));
@@ -477,7 +477,7 @@ namespace AutoChess.Tests
                 var board = new BoardData(bus);
                 var damages = new List<UnitDamagedEvent>();
                 bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
-                var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 100000, atk: 0));
+                var wearer = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 100000, atk: 0));
                 Place(bus, board, 2, false, new Pos(1, 1), Stats(atk: 100));
 
                 var combat = new CombatSystem(board, bus, 11u);
@@ -496,7 +496,7 @@ namespace AutoChess.Tests
                 var board = new BoardData(bus);
                 var damages = new List<UnitDamagedEvent>();
                 bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
-                var wearer = Place(bus, board, 1, true, new Pos(0, 0), Stats(hp: 100000, atk: 0));
+                var wearer = Place(bus, board, 1, true, new Pos(1, 0), Stats(hp: 100000, atk: 0));
                 Place(bus, board, 2, false, new Pos(1, 1), Stats(atk: 100));
 
                 var combat = new CombatSystem(board, bus, 11u);
@@ -518,10 +518,10 @@ namespace AutoChess.Tests
             var damages = new List<UnitDamagedEvent>();
             bus.Subscribe<UnitDamagedEvent>(e => damages.Add(e));
 
-            var member = Place(bus, board, 1, true, new Pos(0, 0), Stats(atk: 100));
-            var outsider = Place(bus, board, 3, true, new Pos(7, 0), Stats(atk: 100));
-            var enemyA = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));   // member 的最近敌
-            var enemyB = Place(bus, board, 4, false, new Pos(6, 1), Stats(hp: 100000, atk: 0));   // outsider 的最近敌
+            var member = Place(bus, board, 1, true, new Pos(1, 0), Stats(atk: 100));
+            var outsider = Place(bus, board, 3, true, new Pos(3, 5), Stats(atk: 100));
+            var enemyA = Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));   // 实际 (5,1)：member 的最近敌（d4 vs outsider d5）
+            var enemyB = Place(bus, board, 4, false, new Pos(1, 5), Stats(hp: 100000, atk: 0));   // 实际 (5,5)：outsider 的最近敌（d2 vs member d5）
 
             var combat = new CombatSystem(board, bus, 11u);
             combat.AddHook(new CombatHookLibrary.TypeDamageAmpHook(new[] { member }, DamageType.Physical, 30f, ModSourceId.TestBase));
@@ -548,7 +548,7 @@ namespace AutoChess.Tests
                     CritChance = 0, CritDamage = 50, MaxMana = 60, ManaPerHit = 10, ManaRegenPerSecond = 0,
                 };
                 var caster = new Unit(1, 0, true, casterStats, bus);
-                Assert.IsTrue(board.TryPlace(caster, new Pos(0, 0)));
+                Assert.IsTrue(board.TryPlace(caster, new Pos(1, 0)));
                 caster.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 15f, ModSourceId.TestBase));
                 caster.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 55f, ModSourceId.TestBase + 1));   // 合计 70 > 60
 
@@ -563,7 +563,7 @@ namespace AutoChess.Tests
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
-                var plain = Place(bus, board, 1, true, new Pos(0, 0), Stats());
+                var plain = Place(bus, board, 1, true, new Pos(1, 0), Stats());
                 plain.AddModifier(new StatModifier(StatKind.InitialMana, StatOp.Flat, 15f, ModSourceId.TestBase));
                 Place(bus, board, 2, false, new Pos(1, 1), Stats(hp: 100000, atk: 0));
                 var combat = new CombatSystem(board, bus, 11u);

@@ -85,7 +85,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             Assert.IsTrue(board.TryPlace(caster, new Pos(2, 1)));
-            Assert.IsTrue(board.TryPlace(dummy, new Pos(3, 3)));   // 切比雪夫距离 2 ≤ 施法距离 3；普攻射程 5 也够得着
+            Assert.IsTrue(board.TryPlace(dummy, new Pos(4, 3)));   // 切比雪夫距离 2 ≤ 施法距离 3；普攻射程 5 也够得着
             caster.AddMana(30);                                       // 直充拉满（充蓝的 Mana 事件发生在订阅前，不进断言）
 
             var casts = new List<SkillCastEvent>();
@@ -122,7 +122,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(armor: 500, mr: 40), bus);
             board.TryPlace(caster, new Pos(2, 2));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -142,7 +142,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 18, true, CasterStats(30), bus, 1, 18);
             var dummy = new Unit(2, 0, false, DummyStats(armor: 500, mr: 500), bus);
             board.TryPlace(caster, new Pos(2, 2));
-            board.TryPlace(dummy, new Pos(4, 4));   // 敌方先合法摆进己方半场（row 3~5）
+            board.TryPlace(dummy, new Pos(4, 4));   // 敌方先合法摆进己方半场（列 X 4~7）
             Assert.IsTrue(board.TryMove(dummy, new Pos(4, 2), mustStayInOwnHalf: false),
                 "战斗走位越境：把木桩挪进施法者所在行（十字/整行的形状即门禁——开战前模拟近战交战后回身斩）");
             caster.AddMana(30);
@@ -164,8 +164,8 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 11, true, CasterStats(30, critChance: 100), bus, 1, 11);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 2));
-            board.TryPlace(dummy, new Pos(3, 3));   // 敌方先合法摆进己方半场
-            Assert.IsTrue(board.TryMove(dummy, new Pos(3, 2), mustStayInOwnHalf: false),
+            board.TryPlace(dummy, new Pos(4, 3));   // 敌方先合法摆进己方半场
+            Assert.IsTrue(board.TryMove(dummy, new Pos(4, 2), mustStayInOwnHalf: false),
                 "把木桩挪进施法者所在行（整行剑刃的形状即门禁——整行全宽，距离不限）");
             caster.AddMana(30);
 
@@ -191,8 +191,8 @@ namespace AutoChess.Tests
                 var caster = new Unit(1, 11, true, CasterStats(30, critChance: 0), bus, 1, 11);
                 var dummy = new Unit(2, 0, false, DummyStats(), bus);
                 board.TryPlace(caster, new Pos(2, 2));
-                board.TryPlace(dummy, new Pos(3, 3));   // 敌方先合法摆进己方半场
-                Assert.IsTrue(board.TryMove(dummy, new Pos(3, 2), mustStayInOwnHalf: false),
+                board.TryPlace(dummy, new Pos(4, 3));   // 敌方先合法摆进己方半场
+                Assert.IsTrue(board.TryMove(dummy, new Pos(4, 2), mustStayInOwnHalf: false),
                     "把木桩挪进施法者所在行（整行剑刃的形状即门禁）");
                 caster.AddMana(30);
                 var casts = new List<SkillCastEvent>();
@@ -212,7 +212,7 @@ namespace AutoChess.Tests
                 var caster = new Unit(1, 13, true, CasterStats(30, critChance: 100), bus, 1, 13);
                 var dummy = new Unit(2, 0, false, DummyStats(), bus);
                 board.TryPlace(caster, new Pos(2, 1));
-                board.TryPlace(dummy, new Pos(3, 3));
+                board.TryPlace(dummy, new Pos(4, 3));
                 caster.AddMana(30);
                 var casts = new List<SkillCastEvent>();
                 bus.Subscribe<SkillCastEvent>(e => casts.Add(e));
@@ -255,7 +255,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var casts = new List<SkillCastEvent>();
@@ -275,7 +275,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 0);   // 有蓝条但无技能（数据事故形态）
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var casts = new List<SkillCastEvent>();
@@ -297,7 +297,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(20, manaPerHit: 10, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
 
             var log = new List<string>();
             bus.Subscribe<UnitAttackedEvent>(e => log.Add($"A|{e.AttackerId}"));
@@ -332,7 +332,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(10), bus, 1, 99);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(10);
 
             var casts = new List<SkillCastEvent>();
@@ -354,7 +354,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -374,7 +374,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30, range: 5), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var recorder = new RecorderHook();
@@ -397,7 +397,7 @@ namespace AutoChess.Tests
             var caster = new Unit(1, 13, true, CasterStats(30), bus, 1, 13);
             var dummy = new Unit(2, 0, false, DummyStats(hp: 50), bus);
             board.TryPlace(caster, new Pos(2, 1));
-            board.TryPlace(dummy, new Pos(3, 3));
+            board.TryPlace(dummy, new Pos(4, 3));
             caster.AddMana(30);
 
             var log = new List<string>();
@@ -425,7 +425,7 @@ namespace AutoChess.Tests
             var player = new Unit(1, 0, true, DummyStats(), bus);       // 玩家侧木桩
             var enemyCaster = new Unit(2, 0, false, CasterStats(30), bus, 1, 13);
             board.TryPlace(player, new Pos(2, 1));
-            board.TryPlace(enemyCaster, new Pos(3, 3));
+            board.TryPlace(enemyCaster, new Pos(4, 3));
             enemyCaster.AddMana(30);
 
             var casts = new List<SkillCastEvent>();
@@ -481,7 +481,7 @@ namespace AutoChess.Tests
             int slot = Array.FindIndex(s.Shop.Offers, o => o.Id != 0);
             Assert.GreaterOrEqual(slot, 0);
             Assert.IsTrue(s.Buy(slot));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
 
             Assert.IsTrue(s.StartBattle());
             int guard = 0;

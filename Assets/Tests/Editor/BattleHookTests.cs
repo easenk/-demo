@@ -106,8 +106,8 @@ namespace AutoChess.Tests
             Assert.Throws<ArgumentException>(() => combat.RemoveHooksBySource(ModSourceId.None));   // 0 不是"一个来源"
 
             // 摘剩下的钩子照常工作：双方各一单位（首 tick 只充条不出手）
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(100, 10, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 4), Stats(100, 10, range: 1));
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(100, 10, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 4), Stats(100, 10, range: 1));
             combat.Tick();
             CollectionAssert.AreEqual(new[] { "h3:start", "h3:end" }, log);   // h1/h2 已按源摘干净
         }
@@ -147,9 +147,9 @@ namespace AutoChess.Tests
             bus.Subscribe<ManaChangedEvent>(e => log.Add($"mana {e.UnitId} {e.CurrentMana}/{e.MaxMana}"));
             bus.Subscribe<BattleEndedEvent>(e => log.Add($"ended {e.PlayerWon} {e.TotalTicks}"));
 
-            Place(bus, board, 1, true, new Pos(0, 0),
+            Place(bus, board, 1, true, new Pos(1, 0),
                 Stats(200, 20, 1, 0.5f, 1.0f, crit: 50, maxMana: 30, manaPerHit: 10, manaRegen: 2));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(100, 10));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(100, 10));
 
             var combat = new CombatSystem(board, bus, 777u);
             if (hooks != null)
@@ -174,8 +174,8 @@ namespace AutoChess.Tests
             DamageResult seenDamaged = default;
             DeathInfo seenDeath = default;
 
-            var a = Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 100, range: 5));
-            var b = Place(bus, board, 2, false, new Pos(3, 3), Stats(50, 1, range: 1));   // 一击死：整条时间线在一个 tick 内闭合
+            var a = Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 100, range: 5));
+            var b = Place(bus, board, 2, false, new Pos(4, 3), Stats(50, 1, range: 1));   // 一击死：整条时间线在一个 tick 内闭合
 
             var hook = new RecordingHook(log, "h", ModSourceId.TestBase)
             {
@@ -217,7 +217,7 @@ namespace AutoChess.Tests
 
             Assert.AreSame(b, seenDeath.Dead);
             Assert.AreSame(a, seenDeath.Killer);           // #22④：死亡钩子携带击杀者
-            Assert.AreEqual(new Pos(3, 3), seenDeath.Cell); // 尸体清出前的最后一格
+            Assert.AreEqual(new Pos(4, 3), seenDeath.Cell); // 尸体清出前的最后一格
         }
 
         [Test]
@@ -241,8 +241,8 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, atk, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 3), WithArmor(Stats(1000, 1, range: 1), armor));
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, atk, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 3), WithArmor(Stats(1000, 1, range: 1), armor));
 
             int applied = -1;
             var hook = new RecordingHook(new List<string>(), "h", ModSourceId.TestBase)
@@ -264,8 +264,8 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 10, range: 5, crit: 100));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(1000, 1, range: 1));
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 10, range: 5, crit: 100));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(1000, 1, range: 1));
 
             AttackResult seen = default;
             bool draftSeenCrit = false;
@@ -298,8 +298,8 @@ namespace AutoChess.Tests
             bus.Subscribe<UnitRemovedEvent>(e => log.Add("evt:removed"));
             bus.Subscribe<BattleEndedEvent>(e => log.Add("evt:ended"));
 
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 100, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(50, 1, range: 1));
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 100, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(50, 1, range: 1));
 
             var combat = new CombatSystem(board, bus, 5u);
             combat.AddHook(new RecordingHook(log, "h", ModSourceId.TestBase));
@@ -324,8 +324,8 @@ namespace AutoChess.Tests
             var log = new List<string>();
             int playersOnStart = -1, enemiesOnStart = -1;
 
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 10, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(200, 1, range: 1));   // 血 200：多 tick 战斗
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 10, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(200, 1, range: 1));   // 血 200：多 tick 战斗
 
             var hook = new RecordingHook(log, "h", ModSourceId.TestBase)
             {
@@ -362,8 +362,8 @@ namespace AutoChess.Tests
             var log = new List<string>();
             bus.Subscribe<BattleEndedEvent>(e => log.Add("evt:ended"));
 
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 10, range: 5, atkIv: 0.5f));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(200, 1, range: 1));   // 20 击结束 ≈ 300 tick
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 10, range: 5, atkIv: 0.5f));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(200, 1, range: 1));   // 20 击结束 ≈ 300 tick
 
             var combat = new CombatSystem(board, bus, 5u);
             combat.AddHook(new RecordingHook(log, "h", ModSourceId.TestBase));
@@ -383,8 +383,8 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             var log = new List<string>();
 
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 100, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(50, 1, range: 1));
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 100, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(50, 1, range: 1));
 
             var combat = new CombatSystem(board, bus, 5u);
             combat.AddHook(new RecordingHook(log, "h1", ModSourceId.TestBase + 1));
@@ -403,8 +403,8 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             var log = new List<string>();
 
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 10, range: 5));
-            Place(bus, board, 2, false, new Pos(3, 3), Stats(2000, 1, range: 1));   // 血 2000：两 tick 内打不死
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 10, range: 5));
+            Place(bus, board, 2, false, new Pos(4, 3), Stats(2000, 1, range: 1));   // 血 2000：两 tick 内打不死
 
             int srcB = ModSourceId.TestBase + 2;
             var combat = new CombatSystem(board, bus, 5u);
@@ -431,9 +431,9 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            Place(bus, board, 1, true, new Pos(0, 0), Stats(1000, 10, range: 5));   // A：攻 10，攻击间隔 1 秒（30 步/击）
-            var unitB = Place(bus, board, 2, false, new Pos(3, 3), Stats(10, 1, range: 1));   // B：一击死
-            var unitC = Place(bus, board, 3, false, new Pos(4, 3), Stats(30, 1, range: 1));    // C：三击死
+            Place(bus, board, 1, true, new Pos(1, 0), Stats(1000, 10, range: 5));   // A：攻 10，攻击间隔 1 秒（30 步/击）
+            var unitB = Place(bus, board, 2, false, new Pos(4, 3), Stats(10, 1, range: 1));   // B：一击死
+            var unitC = Place(bus, board, 3, false, new Pos(5, 3), Stats(30, 1, range: 1));    // C：三击死
 
             var combat = new CombatSystem(board, bus, 5u);
             var attacks = new List<(int Tick, int Target)>();

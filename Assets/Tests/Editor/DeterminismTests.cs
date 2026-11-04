@@ -50,13 +50,13 @@ namespace AutoChess.Tests
             var eWarlock = new Unit(6, 1, false, Stats(90, 22, 15, 2, 1.6f, 1.1f, 5,
                 maxMana: 40, manaPerHit: 7, regenPerSecond: 1), bus);
 
-            // 摆位（玩家 row 0~2，敌方 row 3~5；棋盘 8×6）
+            // 摆位（左右分：玩家列 X 0~3、敌方列 X 4~7；棋盘 8×6）
             board.TryPlace(pTank, new Pos(0, 0));
-            board.TryPlace(pArcher, new Pos(3, 1));
-            board.TryPlace(pWarlock, new Pos(6, 2));
-            board.TryPlace(eTank, new Pos(0, 5));
-            board.TryPlace(eArcher, new Pos(3, 4));
-            board.TryPlace(eWarlock, new Pos(6, 3));
+            board.TryPlace(pArcher, new Pos(1, 1));
+            board.TryPlace(pWarlock, new Pos(2, 2));
+            board.TryPlace(eTank, new Pos(5, 0));
+            board.TryPlace(eArcher, new Pos(6, 1));
+            board.TryPlace(eWarlock, new Pos(7, 2));
 
             // 吸血规则让 CombatRules 的确定性记账也参与
             var rules = new CombatRules { PlayerLifestealPercent = 10f };

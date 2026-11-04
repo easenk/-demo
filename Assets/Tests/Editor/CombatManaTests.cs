@@ -55,8 +55,8 @@ namespace AutoChess.Tests
         public void AttackHit_GrantsManaPerHit_DefenderGainsNothing()
         {
             // 坦克口径：命中回 5 蓝；靶子无蓝条
-            var tank = Place(true, new Pos(2, 2), Stats(maxMana: 50, manaPerHit: 5, atkInterval: 0.5f));
-            var bag = Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var tank = Place(true, new Pos(3, 2), Stats(maxMana: 50, manaPerHit: 5, atkInterval: 0.5f));
+            var bag = Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var manaEvents = new List<ManaChangedEvent>();
             _bus.Subscribe<ManaChangedEvent>(e => manaEvents.Add(e));
@@ -78,7 +78,7 @@ namespace AutoChess.Tests
             // 术士够不着敌人（走不动）也照回
             var warlock = Place(true, new Pos(0, 2), Stats(maxMana: 50, regenPerSecond: 2, moveInterval: 999f));
             var idle = Place(true, new Pos(1, 2), Stats(maxMana: 50)); // 对照组：无被动回蓝
-            Place(false, new Pos(0, 5), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var manaEvents = new List<ManaChangedEvent>();
             _bus.Subscribe<ManaChangedEvent>(e => manaEvents.Add(e));
@@ -99,9 +99,9 @@ namespace AutoChess.Tests
         public void Warlock_HitAndRegen_Stack()
         {
             // 术士全口径：命中回 7 + 每秒回 2（整数账本每15步回1），贴脸出手（15~16步一刀）
-            var warlock = Place(true, new Pos(2, 2),
+            var warlock = Place(true, new Pos(3, 2),
                 Stats(maxMana: 50, manaPerHit: 7, regenPerSecond: 2, atkInterval: 0.5f));
-            Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var manaEvents = new List<ManaChangedEvent>();
             _bus.Subscribe<ManaChangedEvent>(e => manaEvents.Add(e));
@@ -120,8 +120,8 @@ namespace AutoChess.Tests
         {
             // 上限 20、每击 +10：第15~16步到 10、第30~31步到 20 封顶、第45~46步满蓝静默
             //（阶段3 施法上线前，蓝满了就停在满——不会自己消失）
-            var u = Place(true, new Pos(2, 2), Stats(maxMana: 20, manaPerHit: 10, atkInterval: 0.5f));
-            Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var u = Place(true, new Pos(3, 2), Stats(maxMana: 20, manaPerHit: 10, atkInterval: 0.5f));
+            Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var manaEvents = new List<ManaChangedEvent>();
             _bus.Subscribe<ManaChangedEvent>(e => manaEvents.Add(e));

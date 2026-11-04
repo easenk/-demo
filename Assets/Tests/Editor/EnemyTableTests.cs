@@ -89,15 +89,15 @@ namespace AutoChess.Tests
         [Test]
         public void Default_AllCellsInsideEnemyHalf()
         {
-            // 敌方半场 = row 3~5（前后分，D1）；摆位出半场会走 Session 兜底，但默认表不该依赖兜底
-            int enemyRowMin = BoardData.Height - BoardData.PlayerHalfRows;
+            // 敌方半场 = 列 X 4~7（左右分，D1 2026-11-04 拍板）；摆位出半场会走 Session 兜底，但默认表不该依赖兜底
+            int enemyColMin = BoardData.Width - BoardData.PlayerHalfColumns;
             foreach (var entry in EnemyTable.Default.Entries)
                 foreach (var s in entry.Spawns)
                 {
-                    Assert.GreaterOrEqual(s.Cell.Y, enemyRowMin, $"回合 {entry.Round}「{s.DisplayName}」摆位进了玩家半场");
-                    Assert.Less(s.Cell.Y, BoardData.Height);
-                    Assert.GreaterOrEqual(s.Cell.X, 0);
+                    Assert.GreaterOrEqual(s.Cell.X, enemyColMin, $"回合 {entry.Round}「{s.DisplayName}」摆位进了玩家半场");
                     Assert.Less(s.Cell.X, BoardData.Width);
+                    Assert.GreaterOrEqual(s.Cell.Y, 0);
+                    Assert.Less(s.Cell.Y, BoardData.Height);
                 }
         }
 

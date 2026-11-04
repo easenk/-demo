@@ -57,7 +57,7 @@ namespace AutoChess.Tests
         {
             var list = new List<EnemySpawn>();
             for (int i = 0; i < count; i++)
-                list.Add(Foe(30, 0, new Pos(i % 8, 3 + i / 8)));
+                list.Add(Foe(30, 0, new Pos(4 + i % 4, i / 4)));   // 左右分：敌方半场 24 格铺满（列 4~7 × 行 0~5）
             return list.ToArray();
         }
 
@@ -208,7 +208,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             Assert.IsTrue(s.StartBattle());
             Assert.AreEqual(GamePhase.Battle, s.Phase);
 
@@ -257,7 +257,7 @@ namespace AutoChess.Tests
             var s = New(new EventBus(), Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             Assert.IsTrue(s.StartBattle());
             Assert.IsFalse(s.SettleBattle(), "未分晓前拒绝");
             int guard = 0;
@@ -313,7 +313,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar()));   // 空编成表
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));                  // 空场+空敌 = 判负；玩家须有人在场
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             Assert.IsTrue(s.StartBattle());
             Assert.AreEqual(GamePhase.Settlement, s.Phase, "构造即终局直接结算（战斗根本没发生）");
             Assert.AreEqual(0, battleEnded.Count, "空场战斗从不 Tick：BattleEndedEvent 永不广播");
@@ -329,12 +329,12 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(50, 10, new Pos(3, 4)), Foe(60, 20, new Pos(5, 5), atkIv: 1.1f)),
+                Round(1, Foe(50, 10, new Pos(5, 4)), Foe(60, 20, new Pos(5, 5), atkIv: 1.1f)),
             });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             Assert.IsTrue(s.StartBattle());
 
             var foe = s.EnemyRoster.ToArray();
@@ -345,7 +345,7 @@ namespace AutoChess.Tests
                 Assert.AreEqual(1, u.Star);
                 Assert.IsTrue(u.IsOnBoard);
             }
-            Assert.AreEqual(new Pos(3, 4), foe[0].Pos, "摆位 = 编成表写死");
+            Assert.AreEqual(new Pos(5, 4), foe[0].Pos, "摆位 = 编成表写死");
             Assert.AreEqual(new Pos(5, 5), foe[1].Pos);
             Assert.AreEqual(GamePhase.Battle, s.Phase);
         }
@@ -356,15 +356,15 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(50, 0, new Pos(3, 4)), Foe(50, 0, new Pos(3, 4))),   // 同格编成
+                Round(1, Foe(50, 0, new Pos(5, 2)), Foe(50, 0, new Pos(5, 2))),   // 同格编成
             });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 0, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.StartBattle());
             var foe = s.EnemyRoster.ToArray();
             Assert.AreEqual(2, foe.Length, "兜底不丢怪");
-            Assert.AreEqual(new Pos(3, 4), foe[0].Pos);
-            Assert.AreEqual(new Pos(0, 3), foe[1].Pos, "第二只兜底到敌方半场首个空格（行主序 (0,3)）");
+            Assert.AreEqual(new Pos(5, 2), foe[0].Pos);
+            Assert.AreEqual(new Pos(4, 0), foe[1].Pos, "第二只兜底到敌方半场首个空格（列主序 (4,0)）");
         }
 
         [Test]
@@ -377,7 +377,7 @@ namespace AutoChess.Tests
             // R1 两只怪 + 玩家空场 → 构造即终局判负，敌方活着留在棋盘 → EnterPrep 整体退场
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(500, 0, new Pos(3, 4)), Foe(500, 0, new Pos(5, 4))),
+                Round(1, Foe(500, 0, new Pos(5, 1)), Foe(500, 0, new Pos(5, 3))),
             });
             var s = New(bus, Tables(SingleChar(), enemies));
             Assert.IsTrue(s.StartRun());
@@ -387,32 +387,32 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartPrep());
             Assert.AreEqual(0, s.EnemyRoster.Count, "敌方整体退场（名册清空）");
             Assert.AreEqual(2, removed.Count, "两只各发一条 UnitRemovedEvent");
-            Assert.IsNull(s.Board.GetOccupant(new Pos(3, 4)), "棋盘敌半场清空");
-            Assert.IsNull(s.Board.GetOccupant(new Pos(5, 4)));
+            Assert.IsNull(s.Board.GetOccupant(new Pos(5, 1)), "棋盘敌半场清空");
+            Assert.IsNull(s.Board.GetOccupant(new Pos(5, 3)));
         }
 
         [Test]
         public void EnterPrep_SurvivorReturnsToPlayerHalf()
         {
             var bus = new EventBus();
-            // 近战棋越境击杀：range 1 → 走到 (4,3)（敌方半场）才够得着 (4,4)
-            var enemies = new EnemyTable(new[] { Round(1, Foe(50, 0, new Pos(4, 4), atkIv: 1f)) });
+            // 近战棋越境击杀：range 1 → 走到 (4,2)（敌方半场）才够得着 (5,2)
+            var enemies = new EnemyTable(new[] { Round(1, Foe(50, 0, new Pos(5, 2), atkIv: 1f)) });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 1), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(3, 2)));
             Assert.IsTrue(s.StartBattle());
             int guard = 0;
             while (!s.Combat.IsOver && guard++ < 6000) s.Combat.Tick();
             Assert.IsTrue(s.SettleBattle(), "分晓后结算");
             Assert.IsTrue(s.Combat.PlayerWon);
             var survivor = s.PlayerBoard.Single();
-            Assert.AreEqual(new Pos(4, 3), survivor.Pos, "战后越境在敌方半场（走到贴脸才击杀）");
+            Assert.AreEqual(new Pos(4, 2), survivor.Pos, "战后越境在敌方半场（走到贴脸才击杀）");
 
             Assert.IsTrue(s.StartPrep());
-            Assert.AreEqual(new Pos(3, 2), survivor.Pos,
-                "拉回切比雪夫最近空格；(3,2) 距 1 且扫描序先到（先于 (4,2)）——与索敌同一套确定性规则");
-            Assert.LessOrEqual(survivor.Pos.Y, BoardData.PlayerHalfRows - 1, "回到玩家半场");
+            Assert.AreEqual(new Pos(3, 1), survivor.Pos,
+                "拉回切比雪夫最近空格；(3,1)/(3,2) 并列距 1——列主序扫描先到 (3,1)，与索敌同一套确定性规则");
+            Assert.Less(survivor.Pos.X, BoardData.PlayerHalfColumns, "回到玩家半场");
             Assert.IsTrue(survivor.IsOnBoard);
         }
 
@@ -437,7 +437,7 @@ namespace AutoChess.Tests
             BuyChar(s, 2);
             var a = s.Bench.First(u => u.CharId == 1);
             var b = s.Bench.First(u => u.CharId == 2);
-            Assert.IsTrue(s.PlaceOnBoard(a.Id, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(a.Id, new Pos(3, 3)));
             Assert.IsTrue(s.PlaceOnBoard(b.Id, new Pos(3, 1)));
 
             Assert.IsTrue(s.StartBattle());
@@ -450,7 +450,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartPrep());
             Assert.IsTrue(a.IsAlive, "上一场参战者死亡后复活");
             Assert.IsTrue(a.IsOnBoard);
-            Assert.AreEqual(new Pos(4, 2), a.Pos, "死者优先原位复活");
+            Assert.AreEqual(new Pos(3, 3), a.Pos, "死者优先原位复活");
             Assert.AreEqual(30, a.CurrentHp, "复活即满血（RestoreFullHp）");
             Assert.AreEqual(500, b.CurrentHp, "幸存者同样满血归位");
             Assert.AreEqual(2, restored.Count, "A、B 各一条恢复事件");
@@ -460,8 +460,8 @@ namespace AutoChess.Tests
         public void EnterPrep_DeadDisplacedToNearestFreeCell()
         {
             var bus = new EventBus();
-            // 恶狼 t15 杀 A(4,2)；B 走到 (4,2)（A 的死格）再 t60 杀狼 → 复活时 A 原位被 B 占
-            var enemies = new EnemyTable(new[] { Round(1, Foe(50, 200, new Pos(4, 4), atkIv: 0.5f, range: 5, name: "恶狼")) });
+            // 恶狼 t15 杀 A(3,3)；B 沿行走到 (3,3)（A 的死格）再杀狼 → 复活时 A 原位被 B 占
+            var enemies = new EnemyTable(new[] { Round(1, Foe(50, 200, new Pos(5, 3), atkIv: 0.5f, range: 5, name: "恶狼")) });
             var chars = new CharacterTable(new[]
             {
                 Char(1, 30, 0, range: 1),
@@ -474,21 +474,21 @@ namespace AutoChess.Tests
             BuyChar(s, 2);
             var a = s.Bench.First(u => u.CharId == 1);
             var b = s.Bench.First(u => u.CharId == 2);
-            Assert.IsTrue(s.PlaceOnBoard(a.Id, new Pos(4, 2)));
-            Assert.IsTrue(s.PlaceOnBoard(b.Id, new Pos(4, 1)));
+            Assert.IsTrue(s.PlaceOnBoard(a.Id, new Pos(3, 3)));
+            Assert.IsTrue(s.PlaceOnBoard(b.Id, new Pos(2, 3)));
 
             Assert.IsTrue(s.StartBattle());
             int guard = 0;
             while (!s.Combat.IsOver && guard++ < 6000) s.Combat.Tick();
             Assert.IsTrue(s.SettleBattle(), "分晓后结算");
             Assert.IsTrue(s.Combat.PlayerWon);
-            Assert.AreEqual(new Pos(4, 2), b.Pos, "B 走进了 A 的死格");
+            Assert.AreEqual(new Pos(3, 3), b.Pos, "B 走进了 A 的死格");
 
             Assert.IsTrue(s.StartPrep());
             Assert.IsTrue(a.IsAlive);
-            Assert.AreEqual(new Pos(4, 2), b.Pos, "幸存者已在自己半场不动");
-            Assert.AreEqual(new Pos(3, 1), a.Pos,
-                "死者原位被占 → 让位到切比雪夫最近空格（并列取扫描序先到 = (3,1)）");
+            Assert.AreEqual(new Pos(3, 3), b.Pos, "幸存者已在自己半场不动");
+            Assert.AreEqual(new Pos(2, 2), a.Pos,
+                "死者原位被占 → 让位到切比雪夫最近空格（并列取列主序扫描先到 = (2,2)）");
         }
 
         [Test]
@@ -669,7 +669,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.Buy(0));
             var u = s.Bench[0];
 
-            Assert.IsFalse(s.PlaceOnBoard(u.Id, new Pos(0, 3)), "敌方半场拒");
+            Assert.IsFalse(s.PlaceOnBoard(u.Id, new Pos(4, 0)), "敌方半场拒");
             Assert.IsFalse(s.PlaceOnBoard(u.Id, new Pos(99, 0)), "越界拒");
             Assert.IsFalse(s.PlaceOnBoard(u.Id, new Pos(8, 0)), "越界拒（棋盘宽 8）");
             Assert.IsFalse(s.PlaceOnBoard(999, new Pos(0, 0)), "未知 unitId 拒");
@@ -689,7 +689,7 @@ namespace AutoChess.Tests
             var u = s.Bench[0];
             Assert.IsTrue(s.PlaceOnBoard(u.Id, new Pos(0, 0)));
 
-            Assert.IsFalse(s.MoveOnBoard(u.Id, new Pos(0, 3)), "备战拖拽不能越进敌方半场");
+            Assert.IsFalse(s.MoveOnBoard(u.Id, new Pos(4, 0)), "备战拖拽不能越进敌方半场");
             Assert.IsFalse(s.MoveOnBoard(u.Id, new Pos(5, 5)), "越境拒");
             Assert.IsFalse(s.MoveOnBoard(999, new Pos(1, 0)), "未知 id 拒");
             Assert.IsTrue(s.MoveOnBoard(u.Id, new Pos(1, 0)), "己方半场内挪位成功");
@@ -954,7 +954,7 @@ namespace AutoChess.Tests
             bus.Subscribe<RoundEndedEvent>(e => ended.Add(e));
 
             // R2 两只怪 + 玩家空场败：扣 = DamageBase(3) + 存活敌人数(2) = 5（2026-10-27 拍板公式）
-            var enemies = new EnemyTable(new[] { Round(2, Foe(500, 0, new Pos(3, 4)), Foe(500, 0, new Pos(5, 4))) });
+            var enemies = new EnemyTable(new[] { Round(2, Foe(500, 0, new Pos(5, 3)), Foe(500, 0, new Pos(5, 4))) });
             var s = New(bus, Tables(SingleChar(), enemies));
             RunToPrep(s, 2);
             Assert.IsTrue(s.StartBattle());   // 空场 → 构造即终局判负（内联结算）
@@ -978,7 +978,7 @@ namespace AutoChess.Tests
             bus.Subscribe<HpChangedEvent>(e => hp.Add(e));
 
             // R1 奖励关两只怪 + 空场败：豁免条款——奖励关败不掉血
-            var enemies = new EnemyTable(new[] { Round(1, Foe(500, 0, new Pos(3, 4)), Foe(500, 0, new Pos(5, 4))) });
+            var enemies = new EnemyTable(new[] { Round(1, Foe(500, 0, new Pos(5, 3)), Foe(500, 0, new Pos(5, 4))) });
             var s = New(bus, Tables(SingleChar(), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.StartBattle());
@@ -999,7 +999,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
 
             RunToEnd(s);
             Assert.IsTrue(s.RunOver, "14 回合全胜通关");
@@ -1052,7 +1052,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             PlayRound(s);   // R1 秒胜
             Assert.IsTrue(s.StartPrep(), "R1 → R2 备战");
             log.Clear();
@@ -1077,7 +1077,7 @@ namespace AutoChess.Tests
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
             RunToEnd(s);
 
             Assert.IsTrue(s.RunOver, "赢下 R14 → 终局");
@@ -1108,7 +1108,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
             int playerId = s.Bench[0].Id;
-            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(0, 0)));
             RunToPrep(s, 12);   // R1~R11 空编成：棋在场 → 全秒胜不掉血
 
             Assert.IsTrue(s.TakeOffBoard(playerId), "R12 备战下棋 → 空场败");
@@ -1118,7 +1118,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartPrep());
             Assert.AreEqual(GameSession.StartHp - 62, s.PlayerHp,
                 "两场惨败各扣 31（净 -31×2）");
-            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)), "R14 重新上场");
+            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(0, 0)), "R14 重新上场");
             PlayRound(s);
 
             var heal = hpEvents.Last();
@@ -1145,7 +1145,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
             int playerId = s.Bench[0].Id;
-            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(0, 0)));
             RunToPrep(s, 12);   // R1~R11 空编成：棋在场 → 全秒胜不掉血
 
             Assert.IsTrue(s.TakeOffBoard(playerId), "R12 备战下棋 → 空场败");
@@ -1153,7 +1153,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartPrep());
             PlayRound(s);   // R13 败 31
             Assert.IsTrue(s.StartPrep());
-            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(0, 0)));
             PlayRound(s);
 
             Assert.Greater(s.Combat.TickCount, GameSession.BossTimeLimitTicks, "这场确实拖过了 90 秒线");
@@ -1180,7 +1180,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
             int playerId = s.Bench[0].Id;
-            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(4, 0)));
+            Assert.IsTrue(s.PlaceOnBoard(playerId, new Pos(0, 0)));
             RunToPrep(s, 14);   // R1~R13 空编成：棋在场 → 全秒胜，血 100 进 R14
             Assert.AreEqual(GameSession.StartHp, s.PlayerHp, "R14 前无扣血");
 
@@ -1213,7 +1213,7 @@ namespace AutoChess.Tests
                 Round(2, Swarm(24)),
                 Round(3, Swarm(24)),
                 Round(4, Swarm(24)),
-                Round(5, Foe(30, 0, new Pos(3, 4)), Foe(30, 0, new Pos(5, 4))),
+                Round(5, Foe(30, 0, new Pos(5, 3)), Foe(30, 0, new Pos(5, 4))),
                 Round(6, Swarm(24)),
             });
             var s = New(bus, Tables(SingleChar(), enemies));
@@ -1253,7 +1253,7 @@ namespace AutoChess.Tests
                 var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5, crit: 5), enemies));
                 Assert.IsTrue(s.StartRun());
                 Assert.IsTrue(s.Buy(0));
-                Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+                Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
                 Assert.IsTrue(s.StartBattle());
                 int guard = 0;
                 while (!s.Combat.IsOver && guard++ < 6000) s.Combat.Tick();
@@ -1324,7 +1324,7 @@ namespace AutoChess.Tests
                 var s = New(new EventBus(), CritTables(crit), 42u);
                 Assert.IsTrue(s.StartRun());
                 Assert.IsTrue(s.Buy(0));
-                Assert.IsTrue(s.PlaceOnBoard(1, new Pos(4, 0)));
+                Assert.IsTrue(s.PlaceOnBoard(1, new Pos(0, 0)));
                 Assert.IsTrue(s.StartBattle());
                 int guard = 0;
                 while (!s.Combat.IsOver && guard++ < 6000) s.Combat.Tick();

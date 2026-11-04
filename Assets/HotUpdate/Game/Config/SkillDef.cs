@@ -66,7 +66,7 @@ namespace AutoChess.Game
         /// <summary>整行 + 整列并集（十字）。</summary>
         FullCross = 4,
 
-        /// <summary>施法者视角的敌方半场全部格子（玩家施法 - row 3~5，敌方施法 - row 0~2）。
+        /// <summary>施法者视角的敌方半场全部格子（玩家施法 - 列 X 4~7，敌方施法 - 列 X 0~3；左右分 2026-11-04 拍板）。
         /// v1 编表未用，语义先钉死防将来歧义（要用"己方半场"时再加枚举值，不预占）。</summary>
         HalfBoard = 5,
     }

@@ -273,7 +273,7 @@ namespace AutoChess.Tests
             Unit player = UnitOf(bus, 1, hp: 100);
             Unit enemy = new Unit(2, 0, false, Stats(30, atk: 0), bus);   // 30 血：6 跳 DoT（每跳 5）打死
             Assert.IsTrue(board.TryPlace(player, new Pos(0, 0)));
-            Assert.IsTrue(board.TryPlace(enemy, new Pos(3, 3)));   // 距离 3 < 射程 5：普攻打得到（不占位不堵路）
+            Assert.IsTrue(board.TryPlace(enemy, new Pos(4, 3)));   // 距离 4 < 射程 5：普攻打得到（不占位不堵路）
 
             var combat = new CombatSystem(board, bus, 11u);
             combat.AddHook(new BuffTickHook(buffs));   // OnTickEnd → buffs.TickAll()
@@ -310,8 +310,8 @@ namespace AutoChess.Tests
                 var buffs = new BuffSystem(table, bus);
                 Unit player = UnitOf(bus, 1, hp: 500);
                 Unit enemy = new Unit(2, 0, false, Stats(200), bus);
-                board.TryPlace(player, new Pos(0, 0));
-                board.TryPlace(enemy, new Pos(2, 2));
+                board.TryPlace(player, new Pos(3, 1));
+                board.TryPlace(enemy, new Pos(4, 1));
 
                 var combat = new CombatSystem(board, bus, seed);
                 combat.AddHook(new BuffTickHook(buffs));

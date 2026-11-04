@@ -143,7 +143,7 @@ namespace AutoChess.Tests
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
-                var caster = Place(bus, board, 1, true, new Pos(4, 1), Caster(30), 14);
+                var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30), 14);
                 Unit foeA = Place(bus, board, 2, false, new Pos(4, 4), Dummy(hp: 100000), 0);
                 foeA.TakeDamage(99500, null);   // 500 血（更薄）
                 Unit foeB = Place(bus, board, 3, false, new Pos(4, 3), Dummy(hp: 100000), 0);
@@ -162,7 +162,7 @@ namespace AutoChess.Tests
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
-                var caster = Place(bus, board, 1, true, new Pos(4, 1), Caster(30), 14);
+                var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30), 14);
                 Unit foeA = Place(bus, board, 2, false, new Pos(4, 4), Dummy(hp: 100000), 0);
                 foeA.TakeDamage(99500, null);   // 500 血
                 Unit foeB = Place(bus, board, 3, false, new Pos(4, 3), Dummy(hp: 100000), 0);
@@ -206,8 +206,8 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, range: 1, moveIv: 10f), 13);
-            Unit a = Place(bus, board, 2, false, new Pos(3, 3), Dummy(), 0);   // 最近（距离 2）→ 锚点
-            Unit b = Place(bus, board, 3, false, new Pos(4, 4), Dummy(), 0);   // 在锚点 3x3 内（x∈[2,4], y∈[2,4]）
+            Unit a = Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);   // 最近（距离 2）→ 锚点
+            Unit b = Place(bus, board, 3, false, new Pos(4, 4), Dummy(), 0);   // 在锚点 3x3 内（x∈[3,5], y∈[2,4]）
             Unit c = Place(bus, board, 4, false, new Pos(6, 4), Dummy(), 0);   // 形状外
             caster.AddMana(30);
 
@@ -249,10 +249,10 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            // 锚点贴左缘 (0,3)：3x3 的 x∈[-1,1] 只有 x∈[0,1] 真实存在——贴边截断
+            // 锚点贴底缘 (4,0)：3x3 的 y∈[-1,1] 只有 y∈[0,1] 真实存在——贴边截断
             var caster = Place(bus, board, 1, true, new Pos(1, 1), Caster(30, range: 1, moveIv: 10f), 13);
-            Place(bus, board, 2, false, new Pos(0, 3), Dummy(), 0);   // 锚点（距离 2）
-            Place(bus, board, 3, false, new Pos(2, 3), Dummy(), 0);   // x=2 > 1：虽在锚点旁却出形状
+            Place(bus, board, 2, false, new Pos(4, 0), Dummy(), 0);   // 锚点（距离 3 = 施法距离边界）
+            Place(bus, board, 3, false, new Pos(5, 2), Dummy(), 0);   // y=2 > 1：虽在锚点旁却出形状
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -272,7 +272,7 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             // 督军整行：敌人在别的行 → 形状内无人 = 不施法不扣蓝
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, range: 1, moveIv: 10f), 11);
-            Place(bus, board, 2, false, new Pos(3, 3), Dummy(), 0);
+            Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);
             Place(bus, board, 3, false, new Pos(5, 4), Dummy(), 0);
             caster.AddMana(30);
 
@@ -315,9 +315,11 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             var skill = new SkillDef(99, "整列测试", DamageType.Physical, 10, 10, 10, 0, 100, 1,
                 SkillTargetRule.SelfShape, false, SkillShape.FullColumn);
-            var caster = Place(bus, board, 1, true, new Pos(2, 2), Caster(30, range: 1, moveIv: 10f), 99);
-            Place(bus, board, 2, false, new Pos(2, 4), Dummy(), 0);   // 同列（x=2）
-            Place(bus, board, 3, false, new Pos(4, 4), Dummy(), 0);   // 同对角但不同列
+            var caster = Place(bus, board, 1, true, new Pos(3, 2), Caster(30, range: 1, moveIv: 10f), 99);
+            Unit inCol = Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);
+            Assert.IsTrue(board.TryMove(inCol, new Pos(3, 3), mustStayInOwnHalf: false),
+                "战斗走位越境——把敌人挪进施法者所在列（敌方半场放不进玩家列，先摆再挪）");
+            Place(bus, board, 3, false, new Pos(5, 4), Dummy(), 0);   // 同排斜向、不同列
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -334,11 +336,12 @@ namespace AutoChess.Tests
         {
             var bus = new EventBus();
             var board = new BoardData(bus);
-            var caster = Place(bus, board, 1, true, new Pos(2, 2), Caster(30, range: 1, moveIv: 10f), 18);
+            var caster = Place(bus, board, 1, true, new Pos(3, 2), Caster(30, range: 1, moveIv: 10f), 18);
             Unit inRow = Place(bus, board, 2, false, new Pos(6, 3), Dummy(), 0);
             Assert.IsTrue(board.TryMove(inRow, new Pos(5, 2), mustStayInOwnHalf: false), "挪进行内");
-            Unit inCol = Place(bus, board, 3, false, new Pos(2, 4), Dummy(), 0);   // 同列
-            Place(bus, board, 4, false, new Pos(4, 4), Dummy(), 0);                 // 对角：不在十字上
+            Unit inCol = Place(bus, board, 3, false, new Pos(5, 4), Dummy(), 0);
+            Assert.IsTrue(board.TryMove(inCol, new Pos(3, 4), mustStayInOwnHalf: false), "挪进列内");
+            Place(bus, board, 4, false, new Pos(5, 5), Dummy(), 0);                 // 斜向：不在十字上
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -360,8 +363,8 @@ namespace AutoChess.Tests
                 SkillTargetRule.SelfShape, false, SkillShape.Box, 2, 2);
             var caster = Place(bus, board, 1, true, new Pos(3, 2), Caster(30, range: 1, moveIv: 10f), 99);
             Unit rightDown = Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);   // 右+下 ✓ 在形状内
-            Place(bus, board, 3, false, new Pos(2, 3), Dummy(), 0);                    // 左+下 ✗ 出形状
-            Place(bus, board, 4, false, new Pos(3, 4), Dummy(), 0);                    // 正下两格 ✗ 出形状
+            Place(bus, board, 3, false, new Pos(5, 2), Dummy(), 0);                    // 右+平 ✗ 出形状（x=5 > 4）
+            Place(bus, board, 4, false, new Pos(4, 4), Dummy(), 0);                    // 下+二 ✗ 出形状（y=4 > 3）
             caster.AddMana(30);
 
             var damages = new List<UnitDamagedEvent>();
@@ -379,12 +382,12 @@ namespace AutoChess.Tests
             var skill = new SkillDef(99, "半场测试", DamageType.Physical, 10, 10, 10, 0, 100, 1,
                 SkillTargetRule.SelfShape, false, SkillShape.HalfBoard);
 
-            // (a) 玩家施法 → 打敌方半场（row 3~5）：敌方单位本就只能摆在那里 → 全中
+            // (a) 玩家施法 → 打敌方半场（列 X 4~7）：敌方单位本就只能摆在那里 → 全中
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
                 var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, range: 1, moveIv: 10f), 99);
-                Place(bus, board, 2, false, new Pos(3, 3), Dummy(), 0);
+                Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);
                 Place(bus, board, 3, false, new Pos(7, 5), Dummy(), 0);
                 caster.AddMana(30);
 
@@ -394,13 +397,13 @@ namespace AutoChess.Tests
                 combat.Tick();
                 Assert.AreEqual(2, damages.Count, "玩家视角：敌方半场全部（两个敌人都中）");
             }
-            // (b) 敌方施法 → 打玩家半场（row 0~2）：规则对敌方镜像成立
+            // (b) 敌方施法 → 打玩家半场（列 X 0~3）：规则对敌方镜像成立
             {
                 var bus = new EventBus();
                 var board = new BoardData(bus);
                 Place(bus, board, 1, true, new Pos(2, 1), Dummy(), 0);
-                Place(bus, board, 2, true, new Pos(5, 2), Dummy(), 0);
-                var foeCaster = Place(bus, board, 3, false, new Pos(3, 4), Caster(30, range: 1, moveIv: 10f), 99);
+                Place(bus, board, 2, true, new Pos(1, 2), Dummy(), 0);
+                var foeCaster = Place(bus, board, 3, false, new Pos(4, 4), Caster(30, range: 1, moveIv: 10f), 99);
                 foeCaster.AddMana(30);
 
                 var damages = new List<UnitDamagedEvent>();
@@ -459,7 +462,7 @@ namespace AutoChess.Tests
             // 圣殿之王技能（id 17 王权裁决）：AllAllies + 王权庇护（全队双抗 +30）
             var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30, range: 1, moveIv: 10f), 17);
             Unit allyA = Place(bus, board, 2, true, new Pos(0, 0), Ally(atk: 10), 0);
-            Unit allyB = Place(bus, board, 3, true, new Pos(6, 2), Ally(atk: 10), 0);
+            Unit allyB = Place(bus, board, 3, true, new Pos(0, 2), Ally(atk: 10), 0);
             Place(bus, board, 4, false, new Pos(5, 4), Dummy(), 0);
             caster.AddMana(30);
 
@@ -503,7 +506,7 @@ namespace AutoChess.Tests
                 var board = new BoardData(bus);
                 var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30, range: 1, moveIv: 10f, attackPower: 20), 9);
                 Unit weak = Place(bus, board, 2, true, new Pos(0, 0), Ally(atk: 50), 0);
-                Unit strong = Place(bus, board, 3, true, new Pos(6, 2), Ally(atk: 80), 0);
+                Unit strong = Place(bus, board, 3, true, new Pos(0, 2), Ally(atk: 80), 0);
                 Place(bus, board, 4, false, new Pos(5, 4), Dummy(), 0);
                 caster.AddMana(30);
 
@@ -521,7 +524,7 @@ namespace AutoChess.Tests
                 var board = new BoardData(bus);
                 var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30, range: 1, moveIv: 10f, attackPower: 90), 9);
                 Unit allyA = Place(bus, board, 2, true, new Pos(0, 0), Ally(atk: 90), 0);   // 与施法者并列 90，先扫到
-                Unit allyB = Place(bus, board, 3, true, new Pos(6, 2), Ally(atk: 70), 0);
+                Unit allyB = Place(bus, board, 3, true, new Pos(0, 2), Ally(atk: 70), 0);
                 Place(bus, board, 4, false, new Pos(5, 4), Dummy(), 0);
                 caster.AddMana(30);
 
@@ -541,7 +544,7 @@ namespace AutoChess.Tests
             var board = new BoardData(bus);
             var caster = Place(bus, board, 1, true, new Pos(3, 1), Caster(30, range: 1, moveIv: 10f), 10);
             Unit a = Place(bus, board, 2, true, new Pos(0, 0), Ally(atk: 10, hp: 40), 0);
-            Unit b = Place(bus, board, 3, true, new Pos(6, 2), Ally(atk: 10, hp: 100), 0);
+            Unit b = Place(bus, board, 3, true, new Pos(0, 2), Ally(atk: 10, hp: 100), 0);
             a.TakeDamage(10, null);   // A：30/40 = 75%（绝对值最低）
             b.TakeDamage(40, null);   // B：60/100 = 60%（比例最低）
             Place(bus, board, 4, false, new Pos(5, 4), Dummy(), 0);
@@ -569,7 +572,7 @@ namespace AutoChess.Tests
             // 影刃技能（id 14 影袭）：生命最低单体 + 淬毒（DoT 2/跳 × 120 tick）
             // 蓝条 30、命中回蓝 30：一击普攻回满 → 交替"普攻→施法"
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, manaPerHit: 30, range: 5, moveIv: 10f), 14);
-            Unit weak = Place(bus, board, 2, false, new Pos(3, 3), Dummy(hp: 50), 0);
+            Unit weak = Place(bus, board, 2, false, new Pos(4, 3), Dummy(hp: 50), 0);
             Unit tanky = Place(bus, board, 3, false, new Pos(5, 4), Dummy(hp: 100000), 0);
             caster.AddMana(30);
 
@@ -613,7 +616,7 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, critChance: 100, range: 1, moveIv: 10f), 11);
-            Unit a = Place(bus, board, 2, false, new Pos(3, 3), Dummy(), 0);
+            Unit a = Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);
             Unit b = Place(bus, board, 3, false, new Pos(5, 3), Dummy(), 0);
             Unit c = Place(bus, board, 4, false, new Pos(7, 3), Dummy(), 0);
             Assert.IsTrue(board.TryMove(a, new Pos(3, 1), mustStayInOwnHalf: false));
@@ -644,7 +647,7 @@ namespace AutoChess.Tests
             var bus = new EventBus();
             var board = new BoardData(bus);
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, range: 1, moveIv: 10f), 11);
-            Unit a = Place(bus, board, 2, false, new Pos(3, 3), Dummy(), 0);
+            Unit a = Place(bus, board, 2, false, new Pos(4, 3), Dummy(), 0);
             Unit b = Place(bus, board, 3, false, new Pos(5, 3), Dummy(), 0);
             Unit c = Place(bus, board, 4, false, new Pos(7, 3), Dummy(), 0);
             Assert.IsTrue(board.TryMove(a, new Pos(3, 1), mustStayInOwnHalf: false));
@@ -669,7 +672,7 @@ namespace AutoChess.Tests
             var caster = Place(bus, board, 1, true, new Pos(2, 1), Caster(30, range: 1, moveIv: 10f), 11);
             for (int i = 0; i < 3; i++)
             {
-                Unit foe = Place(bus, board, 2 + i, false, new Pos(3 + i * 2, 3), Dummy(hp: 50), 0);
+                Unit foe = Place(bus, board, 2 + i, false, new Pos(4 + i, 3), Dummy(hp: 50), 0);
                 Assert.IsTrue(board.TryMove(foe, new Pos(3 + i * 2, 1), mustStayInOwnHalf: false));
             }
             caster.AddMana(30);
@@ -718,7 +721,7 @@ namespace AutoChess.Tests
             var s = new GameSession(bus, 0u, GameTables.Default);   // Default 捆十表：含 Buffs
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0), "开局 3 金买 1 费");
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             Assert.IsTrue(s.StartBattle());
 
             Assert.IsNotNull(s.Combat.Buffs, "生产链：GameTables.Buffs → CombatSystem 内建账本（技能附带 Buff 的管线在场）");
@@ -750,7 +753,7 @@ namespace AutoChess.Tests
                 for (int i = 0; i < 3; i++)
                 {
                     var foe = new Unit(2 + i, 0, false, Dummy(), bus);
-                    board.TryPlace(foe, new Pos(3 + i * 2, 3));
+                    board.TryPlace(foe, new Pos(4 + i, 3));
                     board.TryMove(foe, new Pos(3 + i * 2, 1), mustStayInOwnHalf: false);
                 }
                 caster.AddMana(30);

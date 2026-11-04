@@ -64,10 +64,12 @@ namespace AutoChess.Presentation
                 Debug.Log($"[SceneFlow] 场景激活，环境光探针按本场景天空盒重算: {path}");
             }
 
-            // 使命完成检测：Main 已成为活动场景 → 自毁退场（战台装配归 4B2 BattleRoot）
+            // 使命完成检测：Main 已成为活动场景 → 装配战台组合根（4B2 BattleRoot）后自毁退场
             if (_mainRequested && path == MainScenePath)
             {
-                Debug.Log("[SceneFlow] Main 战台已就位（4B2 组合根将在此装配战台），场景流驱动器退场");
+                var rootGo = new GameObject("BattleRoot");
+                rootGo.AddComponent<BattleRoot>();
+                Debug.Log("[SceneFlow] Main 战台已就位 → 装配 BattleRoot 组合根，场景流驱动器退场");
                 Destroy(gameObject);
             }
         }

@@ -234,7 +234,7 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.Buy(0), "1 费棋：开局 3 金买得起（单角色全 1 费表 → 槽 0 恒有货）");
             int casterId = s.Bench[0].Id;
             Assert.AreEqual(13, s.Bench[0].SkillId, "买的棋带技能 13（编表整链路）");
-            Assert.IsTrue(s.PlaceOnBoard(casterId, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(casterId, new Pos(3, 2)));
             BattleToEnd(s);   // R1 奖励关：杀双鼠 → 掉 T1/T2 各一矿
 
             // ── R2 备战：矿 → 策略 → 装备四连 ──

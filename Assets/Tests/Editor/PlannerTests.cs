@@ -731,7 +731,7 @@ namespace AutoChess.Tests
             {
                 new EnemyRoundEntry(1, new[]
                 {
-                    new EnemySpawn("验收傀儡", foeStats, new Pos(0, 5), 1, 1, 91),   // 矿挡位 1、技能 91
+                    new EnemySpawn("验收傀儡", foeStats, new Pos(4, 0), 1, 1, 91),   // 矿挡位 1、技能 91
                 }),
             });
 
@@ -798,7 +798,7 @@ namespace AutoChess.Tests
             };
             var enemies = new EnemyTable(new[]
             {
-                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收病鼠", foeStats, new Pos(0, 5), 1, 1) }),
+                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收病鼠", foeStats, new Pos(4, 0), 1, 1) }),
             });
 
             var skills = new SkillTable(new SkillDef[]
@@ -833,13 +833,13 @@ namespace AutoChess.Tests
             return new ShopOdds(t);
         }
 
-        /// <summary>覆盖场景整场预演（同种子=同战斗；术士 (4,2) 对 (0,5) 傀儡——距离 4 逼出走位）。</summary>
+        /// <summary>覆盖场景整场预演（同种子=同战斗；术士 (0,0) 对 (4,0) 傀儡——距离 4 逼出走位）。</summary>
         private static (GameSession s, BattlePreviewResult r) RunCoveragePreview(uint seed)
         {
             var s = new GameSession(new EventBus(), seed, CoverageTables());
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0), "1 费棋：开局 3 金买得起");
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             var p = new BattlePreviewer();
             Assert.IsTrue(p.Start(s), "预演开战");
             return (s, p.RunToEnd());
@@ -851,7 +851,7 @@ namespace AutoChess.Tests
             var s = new GameSession(new EventBus(), seed, DotKillTables());
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             var p = new BattlePreviewer();
             Assert.IsTrue(p.Start(s));
             return (s, p.RunToEnd());

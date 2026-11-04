@@ -180,20 +180,20 @@ namespace AutoChess.Tests
                 for (int i = 0; i < buys; i++)
                     if (s.Buy(decider.NextInt(ShopSystem.Slots))) cov.Buys++;
 
-                // 6) 上场尝试 0~2 次（选备战棋 + 随机己方半场格）
+                // 6) 上场尝试 0~2 次（选备战棋 + 随机己方半场格——左右分：X 0~3 × Y 0~5）
                 int ups = decider.NextInt(3);
                 for (int i = 0; i < ups; i++)
                 {
                     if (s.Bench.Count == 0) break;   // 状态同步 → 两 Session 同时 break → 决策器节奏仍同步
                     int idx = decider.NextInt(s.Bench.Count);
-                    if (s.PlaceOnBoard(s.Bench[idx].Id, new Pos(decider.NextInt(8), decider.NextInt(3)))) cov.PlaceUps++;
+                    if (s.PlaceOnBoard(s.Bench[idx].Id, new Pos(decider.NextInt(4), decider.NextInt(6)))) cov.PlaceUps++;
                 }
 
                 // 7) 挪位尝试（1/2 概率）
                 if (s.PlayerBoard.Count > 0 && decider.NextInt(2) == 0)
                 {
                     int idx = decider.NextInt(s.PlayerBoard.Count);
-                    if (s.MoveOnBoard(s.PlayerBoard[idx].Id, new Pos(decider.NextInt(8), decider.NextInt(3)))) cov.Moves++;
+                    if (s.MoveOnBoard(s.PlayerBoard[idx].Id, new Pos(decider.NextInt(4), decider.NextInt(6)))) cov.Moves++;
                 }
 
                 // 8) 下场尝试（1/6 概率）

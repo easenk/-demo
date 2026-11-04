@@ -148,7 +148,7 @@ namespace AutoChess.Tests
             {
                 new EnemyRoundEntry(1, new[]
                 {
-                    new EnemySpawn("验收傀儡", foeStats, new Pos(0, 5), 1, 1, 91),   // 矿挡位 1、技能 91
+                    new EnemySpawn("验收傀儡", foeStats, new Pos(4, 0), 1, 1, 91),   // 矿挡位 1、技能 91
                 }),
             });
 
@@ -209,7 +209,7 @@ namespace AutoChess.Tests
             });
             var enemies = new EnemyTable(new[]
             {
-                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收石像", tankStats, new Pos(3, 3), 0, 1) }),
+                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收石像", tankStats, new Pos(4, 2), 0, 1) }),
             });
             return new GameTables
             {
@@ -250,7 +250,7 @@ namespace AutoChess.Tests
             };
             var enemies = new EnemyTable(new[]
             {
-                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收病鼠", foeStats, new Pos(0, 5), 1, 1) }),
+                new EnemyRoundEntry(1, new[] { new EnemySpawn("验收病鼠", foeStats, new Pos(4, 0), 1, 1) }),
             });
 
             var skills = new SkillTable(new SkillDef[]
@@ -287,12 +287,12 @@ namespace AutoChess.Tests
 
         // ─────────────────────── 场景脚本 ───────────────────────
 
-        /// <summary>覆盖场景备战脚本：买术士上场（4,2）——对面 (0,5) 的傀儡距离 4 > 其射程 1，逼出战斗走位。</summary>
+        /// <summary>覆盖场景备战脚本：买术士上场（0,0）——对面 (4,0) 的傀儡距离 4 > 其射程 1，逼出战斗走位。</summary>
         private static void SetupCoverage(GameSession s)
         {
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0), "1 费棋：开局 3 金买得起（单角色全 1 费表 → 槽 0 恒有货）");
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 2)));
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
         }
 
         /// <summary>覆盖场景整场预演（同种子 = 同战斗）。</summary>
@@ -380,7 +380,7 @@ namespace AutoChess.Tests
             // 不能用"敌方退场清格"当探针：覆盖场景的傀儡死在战斗里、战斗期已被 HandleKill 清格，
             // 进备战时它已不在棋盘上——那格的 Removed 事件正确地发生在战斗期（走了战斗总线，见覆盖测试）。
             int heroId = s.PlayerBoard[0].Id;
-            Assert.IsTrue(s.MoveOnBoard(heroId, new Pos(5, 2)), "备战期挪位");
+            Assert.IsTrue(s.MoveOnBoard(heroId, new Pos(1, 2)), "备战期挪位");
             Assert.AreEqual(1, counter.Of("UnitMoved"), "备战期走位事件到达会话总线——棋盘总线已归还");
         }
 
@@ -445,7 +445,7 @@ namespace AutoChess.Tests
             var s = new GameSession(new EventBus(), SeedA, TimeoutTables());
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(3, 2)));   // 与 (3,3) 石像相邻对拍
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(3, 2)));   // 与 (4,2) 石像相邻对拍
 
             var p = new BattlePreviewer(64);   // 小初始容量：顺路验证扩容路径
             Assert.IsTrue(p.Start(s));
@@ -544,14 +544,14 @@ namespace AutoChess.Tests
             // 开战帧：双方满血、位置如实、先玩家后敌方
             Assert.AreEqual(2, snaps[0].Units.Length);
             Assert.AreEqual(heroId, snaps[0].Units[0].UnitId);
-            Assert.AreEqual(4, snaps[0].Units[0].X);
-            Assert.AreEqual(2, snaps[0].Units[0].Y);
+            Assert.AreEqual(0, snaps[0].Units[0].X);
+            Assert.AreEqual(0, snaps[0].Units[0].Y);
             Assert.AreEqual(500, snaps[0].Units[0].Hp, "开战满血");
             Assert.AreEqual(0, snaps[0].Units[0].Mana);
             Assert.IsTrue(snaps[0].Units[0].IsPlayerSide);
             Assert.AreEqual(enemyId, snaps[0].Units[1].UnitId);
-            Assert.AreEqual(0, snaps[0].Units[1].X);
-            Assert.AreEqual(5, snaps[0].Units[1].Y);
+            Assert.AreEqual(4, snaps[0].Units[1].X);
+            Assert.AreEqual(0, snaps[0].Units[1].Y);
             Assert.AreEqual(400, snaps[0].Units[1].Hp);
             Assert.IsFalse(snaps[0].Units[1].IsPlayerSide);
 
@@ -632,7 +632,7 @@ namespace AutoChess.Tests
             var s = new GameSession(new EventBus(), SeedA, DotKillTables());
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
-            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(4, 2)));   // 距 (0,5) 病鼠 4 格——普攻够得着但 10 秒才出手
+            Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));   // 距 (4,0) 病鼠 4 格——普攻够得着但 10 秒才出手
             var p = new BattlePreviewer();
             Assert.IsTrue(p.Start(s));
             var r = p.RunToEnd();

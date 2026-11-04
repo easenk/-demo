@@ -242,11 +242,11 @@ namespace AutoChess.Tests
             var board = new BoardData(_bus);
             var attacker = new Unit(_nextId++, 1, true, Stats(range: 1), _bus);
             var target = NewUnit(false);
-            Assert.IsTrue(board.TryPlace(attacker, new Pos(0, 0)));
-            Assert.IsTrue(board.TryPlace(target, new Pos(2, 3))); // 敌方只能进 row 3~5（镜像半场）
+            Assert.IsTrue(board.TryPlace(attacker, new Pos(1, 0)));
+            Assert.IsTrue(board.TryPlace(target, new Pos(4, 0))); // 敌方只能进列 X 4~7（镜像半场）
 
-            Assert.IsFalse(attacker.CanAttack(target)); // 切比雪夫距离 max(2,3)=3 > 射程 1
-            Assert.IsTrue(board.TryMove(target, new Pos(1, 1), mustStayInOwnHalf: false));
+            Assert.IsFalse(attacker.CanAttack(target)); // 切比雪夫距离 max(3,0)=3 > 射程 1
+            Assert.IsTrue(board.TryMove(target, new Pos(2, 1), mustStayInOwnHalf: false));
             Assert.IsTrue(attacker.CanAttack(target));  // 斜对角：距离 1 = 射程 1
 
             Assert.IsFalse(attacker.CanAttack(null));   // null → false

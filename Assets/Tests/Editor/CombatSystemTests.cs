@@ -82,8 +82,8 @@ namespace AutoChess.Tests
         [Test]
         public void CrushBattle_PlayerWinsFast_NoRolls()
         {
-            var hero = Place(true, new Pos(0, 2), Stats(maxHp: 1000, attack: 999, range: 3, atkInterval: 0.5f));
-            var foe = Place(false, new Pos(0, 5), Stats(maxHp: 50, attack: 1));
+            var hero = Place(true, new Pos(1, 2), Stats(maxHp: 1000, attack: 999, range: 3, atkInterval: 0.5f));
+            var foe = Place(false, new Pos(4, 2), Stats(maxHp: 50, attack: 1));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -102,8 +102,8 @@ namespace AutoChess.Tests
         [Test]
         public void HopelessBattle_PlayerLoses()
         {
-            var lamb = Place(true, new Pos(0, 2), Stats(maxHp: 10, attack: 1, range: 1));
-            var wolf = Place(false, new Pos(0, 5), Stats(maxHp: 1000, attack: 999, range: 3));
+            var lamb = Place(true, new Pos(1, 2), Stats(maxHp: 10, attack: 1, range: 1));
+            var wolf = Place(false, new Pos(4, 2), Stats(maxHp: 1000, attack: 999, range: 3));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -120,8 +120,8 @@ namespace AutoChess.Tests
         [Test]
         public void Timeout_CountsAsPlayerDefeat()
         {
-            var pWall = Place(true, new Pos(0, 2), Stats(maxHp: 1000000, attack: 1, range: 1));
-            var eWall = Place(false, new Pos(0, 5), Stats(maxHp: 1000000, attack: 1, range: 1));
+            var pWall = Place(true, new Pos(1, 2), Stats(maxHp: 1000000, attack: 1, range: 1));
+            var eWall = Place(false, new Pos(4, 2), Stats(maxHp: 1000000, attack: 1, range: 1));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -140,8 +140,8 @@ namespace AutoChess.Tests
         public void RangedGetsFreeHits_WhileMeleeApproaches()
         {
             // 弩手射程3/攻14/攻击间隔1秒；蛮兵血30/攻99/近战/移动间隔1秒，从 3 格外追进来
-            var archer = Place(true, new Pos(0, 2), Stats(attack: 14, range: 3));
-            var brute = Place(false, new Pos(0, 5), Stats(maxHp: 30, attack: 99, range: 1));
+            var archer = Place(true, new Pos(1, 2), Stats(attack: 14, range: 3));
+            var brute = Place(false, new Pos(4, 2), Stats(maxHp: 30, attack: 99, range: 1));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -163,27 +163,27 @@ namespace AutoChess.Tests
         [Test]
         public void AcquireTarget_TieBreaksByRowMajorScanOrder()
         {
-            // 侦察兵 (3,2)；两个敌人切比雪夫距离同为 2：(1,4) 与 (5,4)
+            // 侦察兵 (3,2)；两个敌人切比雪夫距离同为 2：(4,0) 与 (5,4)（左右分下都在敌方半场 X4~7）
             var scout = Place(true, new Pos(3, 2), Stats(attack: 10, range: 1, moveInterval: 0.5f));
-            var left = Place(false, new Pos(1, 4), Stats(maxHp: 1000, atkInterval: 999f, moveInterval: 999f));
+            var left = Place(false, new Pos(4, 0), Stats(maxHp: 1000, atkInterval: 999f, moveInterval: 999f));
             var right = Place(false, new Pos(5, 4), Stats(maxHp: 1000, atkInterval: 999f, moveInterval: 999f));
 
             var combat = new CombatSystem(_board, _bus);
             // 移动间隔0.5秒=攒15步（浮点±1）→ 17步内必走
             for (int i = 0; i < 17; i++) combat.Tick();
 
-            // 并列取先扫到（行主序 → (1,4) 在 (5,4) 之前）→ 第一步朝 (1,4) 迈：(2,3)
-            Assert.AreEqual(new Pos(2, 3), scout.Pos);
-            Assert.AreEqual(new Pos(1, 4), left.Pos);  // 敌人被 999 间隔钉死，一步没走
+            // 并列取先扫到（行主序 → (4,0) 在 (5,4) 之前）→ 第一步朝 (4,0) 迈：(4,1)
+            Assert.AreEqual(new Pos(4, 1), scout.Pos);
+            Assert.AreEqual(new Pos(4, 0), left.Pos);  // 敌人被 999 间隔钉死，一步没走
             Assert.AreEqual(new Pos(5, 4), right.Pos);
         }
 
         [Test]
         public void TargetLock_PersistsUntilDeath_ThenReacquires()
         {
-            var slayer = Place(true, new Pos(2, 2), Stats(attack: 999, range: 1, atkInterval: 0.5f, moveInterval: 0.5f));
-            var near = Place(false, new Pos(2, 3), Stats(maxHp: 1, atkInterval: 999f, moveInterval: 999f));
-            var far = Place(false, new Pos(7, 5), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var slayer = Place(true, new Pos(3, 2), Stats(attack: 999, range: 1, atkInterval: 0.5f, moveInterval: 0.5f));
+            var near = Place(false, new Pos(4, 2), Stats(maxHp: 1, atkInterval: 999f, moveInterval: 999f));
+            var far = Place(false, new Pos(6, 4), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -194,9 +194,9 @@ namespace AutoChess.Tests
             Assert.AreEqual(near.Id, log.Attacks[0].TargetId); // 锁的是近的
             Assert.AreEqual(1, log.Attacks.Count);
 
-            // 近敌死 → 重新索敌锁远敌 → 朝 (7,5) 迈：(3,3)（移动间隔0.5秒，再攒15~16步）
+            // 近敌死 → 重新索敌锁远敌 → 朝 (6,4) 迈：(4,3)（移动间隔0.5秒，再攒15~16步）
             for (int i = 0; i < 17; i++) combat.Tick();
-            Assert.AreEqual(new Pos(3, 3), slayer.Pos);
+            Assert.AreEqual(new Pos(4, 3), slayer.Pos);
             Assert.AreEqual(1, log.Attacks.Count); // 远敌够不着，从未出过手
         }
 
@@ -205,8 +205,8 @@ namespace AutoChess.Tests
         [Test]
         public void EventSequence_AttackedDamagedDiedRemovedEnded()
         {
-            var killer = Place(true, new Pos(2, 2), Stats(attack: 999, range: 1, atkInterval: 0.5f));
-            var victim = Place(false, new Pos(2, 3), Stats(maxHp: 5, atkInterval: 999f, moveInterval: 999f));
+            var killer = Place(true, new Pos(3, 2), Stats(attack: 999, range: 1, atkInterval: 0.5f));
+            var victim = Place(false, new Pos(4, 2), Stats(maxHp: 5, atkInterval: 999f, moveInterval: 999f));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -221,8 +221,8 @@ namespace AutoChess.Tests
         [Test]
         public void BattleEnded_FiredExactlyOnce_AndTickGuardsAfterEnd()
         {
-            var hero = Place(true, new Pos(0, 2), Stats(maxHp: 1000, attack: 999, range: 3, atkInterval: 0.5f));
-            Place(false, new Pos(0, 5), Stats(maxHp: 50));
+            var hero = Place(true, new Pos(1, 2), Stats(maxHp: 1000, attack: 999, range: 3, atkInterval: 0.5f));
+            Place(false, new Pos(4, 2), Stats(maxHp: 50));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -265,8 +265,8 @@ namespace AutoChess.Tests
         [Test]
         public void CritChanceZero_NeverRolls_DamageEqualsBase()
         {
-            var attacker = Place(true, new Pos(2, 2), Stats(attack: 14, range: 1, atkInterval: 0.5f, crit: 0));
-            var tank = Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var attacker = Place(true, new Pos(3, 2), Stats(attack: 14, range: 1, atkInterval: 0.5f, crit: 0));
+            var tank = Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -284,8 +284,8 @@ namespace AutoChess.Tests
         [Test]
         public void CritChanceHundred_EveryHitCrits_At150Percent()
         {
-            var attacker = Place(true, new Pos(2, 2), Stats(attack: 14, range: 1, atkInterval: 0.5f, crit: 100, critDmg: 50));
-            var tank = Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var attacker = Place(true, new Pos(3, 2), Stats(attack: 14, range: 1, atkInterval: 0.5f, crit: 100, critDmg: 50));
+            var tank = Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -304,8 +304,8 @@ namespace AutoChess.Tests
         public void NoValidTarget_NeverRolls()
         {
             // 攻 999 的急战侠够不着（射程1 vs 距离3）也走不动（移速999）：永远无法出手
-            var eager = Place(true, new Pos(0, 2), Stats(attack: 999, range: 1, moveInterval: 999f));
-            Place(false, new Pos(0, 5), Stats(maxHp: 1000000, range: 1, atkInterval: 999f, moveInterval: 999f));
+            var eager = Place(true, new Pos(1, 2), Stats(attack: 999, range: 1, moveInterval: 999f));
+            Place(false, new Pos(4, 2), Stats(maxHp: 1000000, range: 1, atkInterval: 999f, moveInterval: 999f));
 
             var log = new CombatEventLog();
             log.Attach(_bus);
@@ -323,8 +323,8 @@ namespace AutoChess.Tests
         public void Lifesteal_HealsAttackerByAppliedDamage()
         {
             var rules = new CombatRules { PlayerLifestealPercent = 50f };
-            var vamp = Place(true, new Pos(2, 2), Stats(maxHp: 50, attack: 14, range: 1, atkInterval: 0.5f));
-            var bag = Place(false, new Pos(2, 3), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
+            var vamp = Place(true, new Pos(3, 2), Stats(maxHp: 50, attack: 14, range: 1, atkInterval: 0.5f));
+            var bag = Place(false, new Pos(4, 2), Stats(maxHp: 1000000, atkInterval: 999f, moveInterval: 999f));
 
             vamp.TakeDamage(20, null); // 预先扣到 30/50，留出吸血空间
             var log = new CombatEventLog();
@@ -341,8 +341,8 @@ namespace AutoChess.Tests
         public void KillHeal_RestoresByEffectiveMaxHp()
         {
             var rules = new CombatRules { PlayerKillHealPercent = 20f };
-            var hunter = Place(true, new Pos(2, 2), Stats(maxHp: 50, attack: 999, range: 1, atkInterval: 0.5f));
-            var prey = Place(false, new Pos(2, 3), Stats(maxHp: 1, atkInterval: 999f, moveInterval: 999f));
+            var hunter = Place(true, new Pos(3, 2), Stats(maxHp: 50, attack: 999, range: 1, atkInterval: 0.5f));
+            var prey = Place(false, new Pos(4, 2), Stats(maxHp: 1, atkInterval: 999f, moveInterval: 999f));
 
             hunter.TakeDamage(20, null); // 30/50
             var log = new CombatEventLog();

@@ -78,8 +78,8 @@ namespace AutoChess.Tests
             Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(0, -1)));
             Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(8, 0)));
             Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(0, 6)));
-            // 玩家单位进敌方半场
-            Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(0, 3)));
+            // 玩家单位进敌方半场（左右分：列 X 4~7 归敌方）
+            Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(4, 0)));
             Assert.IsFalse(board.TryPlace(NewUnit(true), new Pos(7, 5)));
             // 格子已占用
             var u1 = NewUnit(true);
@@ -99,7 +99,7 @@ namespace AutoChess.Tests
             var board = new BoardData(_bus);
 
             var enemy = NewUnit(false);
-            Assert.IsTrue(board.TryPlace(enemy, new Pos(0, 5)));  // 敌方半场 = row 3~5（镜像）
+            Assert.IsTrue(board.TryPlace(enemy, new Pos(4, 0)));  // 敌方半场 = 列 X 4~7（镜像）
             Assert.IsFalse(board.TryPlace(NewUnit(false), new Pos(0, 0))); // 敌方不许进玩家半场
             Assert.AreEqual(1, board.CountOnBoard(false));
             Assert.AreEqual(1, _events.Placed);
@@ -127,17 +127,17 @@ namespace AutoChess.Tests
             Assert.IsTrue(board.TryPlace(player, new Pos(0, 2)));
 
             // 备战规则（默认）：不许越出自己的半场
-            Assert.IsFalse(board.TryMove(player, new Pos(0, 3), mustStayInOwnHalf: true));
+            Assert.IsFalse(board.TryMove(player, new Pos(4, 2), mustStayInOwnHalf: true));
             Assert.AreEqual(0, _events.Moved); // 失败不广播
 
             // 战斗走位（false）：可以越境
-            Assert.IsTrue(board.TryMove(player, new Pos(0, 3), mustStayInOwnHalf: false));
+            Assert.IsTrue(board.TryMove(player, new Pos(4, 2), mustStayInOwnHalf: false));
             Assert.AreEqual(1, _events.Moved);
 
             // 敌方同理：镜像的己方半场
             var enemy = NewUnit(false);
             Assert.IsTrue(board.TryPlace(enemy, new Pos(7, 5)));
-            Assert.IsFalse(board.TryMove(enemy, new Pos(7, 2)));       // 玩家半场，默认规则拒绝
+            Assert.IsFalse(board.TryMove(enemy, new Pos(2, 5)));       // 玩家半场，默认规则拒绝
             Assert.IsTrue(board.TryMove(enemy, new Pos(6, 5), mustStayInOwnHalf: true)); // 自己半场内自由挪
         }
 
@@ -213,7 +213,7 @@ namespace AutoChess.Tests
             var e1 = NewUnit(false);
             Assert.IsTrue(board.TryPlace(p1, new Pos(0, 0)));
             Assert.IsTrue(board.TryPlace(p2, new Pos(1, 1)));
-            Assert.IsTrue(board.TryPlace(e1, new Pos(0, 5)));
+            Assert.IsTrue(board.TryPlace(e1, new Pos(4, 0)));
 
             Assert.AreEqual(2, board.CountOnBoard(true));
             Assert.AreEqual(1, board.CountOnBoard(false));
@@ -226,12 +226,12 @@ namespace AutoChess.Tests
         }
 
         [Test]
-        public void IsPlayerHalf_Rows0To2Only()
+        public void IsPlayerHalf_Columns0To3Only()
         {
             var board = new BoardData(_bus);
             Assert.IsTrue(board.IsPlayerHalf(new Pos(0, 0)));
-            Assert.IsTrue(board.IsPlayerHalf(new Pos(7, 2)));
-            Assert.IsFalse(board.IsPlayerHalf(new Pos(0, 3))); // 敌方半场从 row 3 开始
+            Assert.IsTrue(board.IsPlayerHalf(new Pos(3, 5)));
+            Assert.IsFalse(board.IsPlayerHalf(new Pos(4, 0))); // 敌方半场从列 4 开始
             Assert.IsFalse(board.IsPlayerHalf(new Pos(7, 5)));
             Assert.IsFalse(board.IsPlayerHalf(new Pos(-1, 1))); // 越界一律 false
             Assert.IsFalse(board.IsPlayerHalf(new Pos(8, 1)));
@@ -243,12 +243,12 @@ namespace AutoChess.Tests
             var board = new BoardData(_bus);
             var pLow = NewUnit(true);   // 放 (0,0)——row 0
             var pMid = NewUnit(true);   // 放 (3,1)——row 1
-            var pTop = NewUnit(true);   // 放 (7,2)——row 2
-            var e1 = NewUnit(false);    // 放 (0,5)
+            var pTop = NewUnit(true);   // 放 (1,2)——row 2（左右分下玩家列 X0~3）
+            var e1 = NewUnit(false);    // 放 (4,0)
             Assert.IsTrue(board.TryPlace(pMid, new Pos(3, 1)));
             Assert.IsTrue(board.TryPlace(pLow, new Pos(0, 0)));
-            Assert.IsTrue(board.TryPlace(pTop, new Pos(7, 2)));
-            Assert.IsTrue(board.TryPlace(e1, new Pos(0, 5)));
+            Assert.IsTrue(board.TryPlace(pTop, new Pos(1, 2)));
+            Assert.IsTrue(board.TryPlace(e1, new Pos(4, 0)));
 
             var buffer = new List<Unit>();
             board.CollectUnitsOnBoard(true, buffer);

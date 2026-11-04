@@ -15,10 +15,11 @@ namespace AutoChess.Game
         public const int Height = GameConst.BoardHeight;  // 6
 
         /// <summary>
-        /// D1（前后分）：玩家占低 row 的 3 行（row 0~2），敌方占 row 3~5。
-        /// 方向常量集中这一处——阶段4 摆场景核对后若反了，只翻这里和 IsPlayerHalf。
+        /// D1（2026-11-04 拍板改左右分）：玩家占左半 4 列（X 0~3），敌方占右半 4 列（X 4~7）。
+        /// 方向常量集中这一处——摆场景核对后若左右反了，只翻这里和 IsPlayerHalf。
+        /// （原"前后分：玩家 row 0~2、敌方 row 3~5"由 2026-11-04 用户拍板推翻——上下半场观感不佳。）
         /// </summary>
-        public const int PlayerHalfRows = 3;
+        public const int PlayerHalfColumns = 4;
 
         // 非readonly（批次A）：预演隔离（#23①）要求总线可重定向——开战改道战斗总线、结算归还。
         // 写入口只有下面的 internal Bus（同程序集 GameSession 专用），其余用法与 readonly 等价。
@@ -44,10 +45,10 @@ namespace AutoChess.Game
             return c.X >= 0 && c.X < Width && c.Y >= 0 && c.Y < Height;
         }
 
-        /// <summary>玩家半场：row 0~2（D1）。越界坐标一律 false。</summary>
+        /// <summary>玩家半场：列 X 0~3（D1 左右分）。越界坐标一律 false。</summary>
         public bool IsPlayerHalf(Pos c)
         {
-            return IsInside(c) && c.Y < PlayerHalfRows;
+            return IsInside(c) && c.X < PlayerHalfColumns;
         }
 
         /// <summary>空格/越界 → null（调用方不用先判界）。</summary>
@@ -70,7 +71,7 @@ namespace AutoChess.Game
             return count;
         }
 
-        /// <summary>只允许放进该单位的己方半场（玩家 row 0~2，敌方 row 3~5）。</summary>
+        /// <summary>只允许放进该单位的己方半场（玩家列 X 0~3，敌方列 X 4~7）。</summary>
         public bool TryPlace(Unit u, Pos c)
         {
             if (u == null) throw new ArgumentNullException(nameof(u));
@@ -141,10 +142,10 @@ namespace AutoChess.Game
             }
         }
 
-        /// <summary>敌我镜像：玩家的己方半场=row 0~2，敌方的=row 3~5。</summary>
+        /// <summary>敌我镜像：玩家的己方半场=列 X 0~3，敌方的=列 X 4~7。</summary>
         private bool IsOwnHalf(Unit u, Pos c)
         {
-            return u.IsPlayerSide ? IsPlayerHalf(c) : IsInside(c) && c.Y >= Height - PlayerHalfRows;
+            return u.IsPlayerSide ? IsPlayerHalf(c) : IsInside(c) && c.X >= Width - PlayerHalfColumns;
         }
     }
 }

@@ -464,8 +464,8 @@ namespace AutoChess.Game
                     return p.Y == anchor.Y || p.X == anchor.X;
                 case SkillShape.HalfBoard:
                     return casterIsPlayer
-                        ? p.Y >= BoardData.Height - BoardData.PlayerHalfRows
-                        : p.Y < BoardData.PlayerHalfRows;
+                        ? p.X >= BoardData.Width - BoardData.PlayerHalfColumns
+                        : p.X < BoardData.PlayerHalfColumns;
                 default:
                     return false;   // Single 不会走到这里（形状规则校验已挡）
             }

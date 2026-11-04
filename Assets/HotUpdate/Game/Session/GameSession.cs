@@ -668,14 +668,14 @@ namespace AutoChess.Game
             return to.X >= 0 && _board.TryPlace(u, to);
         }
 
-        /// <summary>玩家半场内找"离 from 切比雪夫最近"的空格；行主序扫描 + 严格小于才替换 → 并列取扫描序先到。</summary>
+        /// <summary>玩家半场内找"离 from 切比雪夫最近"的空格；列主序扫描（X 0→3、每列 Y 0→5）+ 严格小于才替换 → 并列取扫描序先到。</summary>
         private Pos NearestFreePlayerCell(Pos from)
         {
             Pos best = new Pos(-1, -1);
             int bestDist = int.MaxValue;
-            for (int y = 0; y < BoardData.PlayerHalfRows; y++)
+            for (int x = 0; x < BoardData.PlayerHalfColumns; x++)
             {
-                for (int x = 0; x < BoardData.Width; x++)
+                for (int y = 0; y < BoardData.Height; y++)
                 {
                     var c = new Pos(x, y);
                     if (_board.GetOccupant(c) != null) continue;
@@ -720,12 +720,12 @@ namespace AutoChess.Game
             }
         }
 
-        /// <summary>敌方半场（row 3~5）行主序扫到的首个空格。</summary>
+        /// <summary>敌方半场（列 X 4~7）列主序扫到的首个空格（X 4→7、每列 Y 0→5——前沿列优先）。</summary>
         private Pos FirstFreeEnemyCell()
         {
-            for (int y = BoardData.Height - BoardData.PlayerHalfRows; y < BoardData.Height; y++)
+            for (int x = BoardData.Width - BoardData.PlayerHalfColumns; x < BoardData.Width; x++)
             {
-                for (int x = 0; x < BoardData.Width; x++)
+                for (int y = 0; y < BoardData.Height; y++)
                 {
                     var c = new Pos(x, y);
                     if (_board.GetOccupant(c) == null) return c;

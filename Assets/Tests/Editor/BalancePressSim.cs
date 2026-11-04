@@ -58,14 +58,18 @@ namespace AutoChess.Tests
 
         private abstract class FactionBot
         {
-            // 布阵用固定格位（玩家半场 8×3；近战前排 row 2、远程后排 row 1/0——格子互不重叠）
+            // 布阵用固定格位（玩家半场 4×6；近战贴中线 X3 列、溢出落 X2，远程 X0~2 纵向展开——左右分 2026-11-04 拍板，格子互不重叠）
+            // 近战表必须 ≥ 满级 8 人全近战的容量：RearrangeBoard 按下标取格、无回退——表短直接越界
             private static readonly Pos[] FrontCells =
             {
-                new Pos(1, 2), new Pos(2, 2), new Pos(3, 2), new Pos(4, 2), new Pos(5, 2), new Pos(6, 2), new Pos(0, 2), new Pos(7, 2),
+                new Pos(3, 2), new Pos(3, 3), new Pos(3, 1), new Pos(3, 4), new Pos(3, 0), new Pos(3, 5),
+                new Pos(2, 0), new Pos(2, 5),
             };
             private static readonly Pos[] BackCells =
             {
-                new Pos(2, 1), new Pos(3, 1), new Pos(4, 1), new Pos(5, 1), new Pos(2, 0), new Pos(3, 0), new Pos(4, 0), new Pos(5, 0),
+                new Pos(2, 2), new Pos(2, 3), new Pos(1, 2), new Pos(1, 3),
+                new Pos(2, 1), new Pos(2, 4), new Pos(1, 1), new Pos(1, 4),
+                new Pos(0, 2), new Pos(0, 3),
             };
 
             protected GameSession S;

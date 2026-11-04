@@ -42,14 +42,17 @@ namespace AutoChess.Tests
             public int EstBytes;     // 估算内存峰值（事件 + 快照）
         }
 
-        // 布阵固定格位（玩家半场 8x3；近战 row 2、远程 row 1/0——与平衡压测同款格表）
+        // 布阵固定格位（玩家半场 4x6；近战贴中线 X3 列、远程 X0~2 纵向展开——左右分 2026-11-04 拍板，与平衡压测同款格表）
         private static readonly Pos[] FrontCells =
         {
-            new Pos(1, 2), new Pos(2, 2), new Pos(3, 2), new Pos(4, 2), new Pos(5, 2), new Pos(6, 2), new Pos(0, 2), new Pos(7, 2),
+            new Pos(3, 2), new Pos(3, 3), new Pos(3, 1), new Pos(3, 4), new Pos(3, 0), new Pos(3, 5),
+            new Pos(2, 0), new Pos(2, 5),
         };
         private static readonly Pos[] BackCells =
         {
-            new Pos(2, 1), new Pos(3, 1), new Pos(4, 1), new Pos(5, 1), new Pos(2, 0), new Pos(3, 0), new Pos(4, 0), new Pos(5, 0),
+            new Pos(2, 2), new Pos(2, 3), new Pos(1, 2), new Pos(1, 3),
+            new Pos(2, 1), new Pos(2, 4), new Pos(1, 1), new Pos(1, 4),
+            new Pos(0, 2), new Pos(0, 3),
         };
 
         // ─────────────────────── 一局（会话）：L8 阵容 × R1~R14 逐场预演 ───────────────────────
