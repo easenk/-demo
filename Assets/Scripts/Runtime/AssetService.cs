@@ -13,7 +13,7 @@ namespace AutoChess.Runtime
     public static class AssetService
     {
         private static ResourcePackage _package;
-        private static SceneHandle _mainSceneHandle;   // 句柄必须长期持有：否则场景可能被误判闲置而卸载
+        private static SceneHandle _sceneHandle;   // 句柄必须长期持有：否则场景可能被误判闲置而卸载
 
         public static bool IsReady { get; private set; }
 
@@ -52,11 +52,12 @@ namespace AutoChess.Runtime
             Debug.Log($"[AssetService] 资源包就绪: {packageName} v{versionOp.PackageVersion}（EditorSimulate）");
         }
 
-        /// <summary>加载主场景（Single：替换当前场景）。location = 资产路径去扩展名。</summary>
-        public static void LoadMainScene(string location)
+        /// <summary>加载场景（Single：替换当前活动场景）。location = 资产路径去扩展名。
+        /// 批次4S 起承担三段流两次跳转（Bootstrap→Start、Start→Main），不再只服务 Main。</summary>
+        public static void LoadScene(string location)
         {
             if (!IsReady) { Debug.LogError("[AssetService] 包未就绪"); return; }
-            _mainSceneHandle = _package.LoadSceneAsync(location);
+            _sceneHandle = _package.LoadSceneAsync(location);
             Debug.Log($"[AssetService] 场景加载请求已发出: {location}");
         }
     }
