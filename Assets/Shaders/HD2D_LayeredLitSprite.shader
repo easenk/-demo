@@ -52,6 +52,7 @@ Shader "HD2D/LayeredLitSprite"
                 float4 positionOS : POSITION;
                 float2 uv         : TEXCOORD0;
                 half3  normalOS   : NORMAL;
+                half4  color      : COLOR;   // SpriteRenderer.color（批次4C：受击/回血/施法闪色的 tint 通道）
             };
 
             struct Varyings
@@ -60,6 +61,7 @@ Shader "HD2D/LayeredLitSprite"
                 float2 uv         : TEXCOORD0;
                 half3  normalWS   : TEXCOORD1;
                 float3 positionWS : TEXCOORD2;
+                half4  color      : COLOR;
             };
 
             Varyings Vert(Attributes IN)
@@ -69,12 +71,13 @@ Shader "HD2D/LayeredLitSprite"
                 OUT.positionCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.uv = IN.uv;
                 OUT.normalWS = normalize(mul(IN.normalOS, (float3x3)unity_WorldToObject));
+                OUT.color = IN.color;
                 return OUT;
             }
 
             half4 Frag(Varyings IN) : SV_Target
             {
-                half4 tex = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _Tint;
+                half4 tex = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _Tint * IN.color;
                 clip(tex.a - _Cutoff);          // 硬边剔除，像素画的命根子
 
                 half3 N = normalize(IN.normalWS);

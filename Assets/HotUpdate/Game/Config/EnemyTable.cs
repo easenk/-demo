@@ -19,7 +19,9 @@ namespace AutoChess.Game
         /// <summary>敌方半场（列 X 4~7）摆位。</summary>
         public readonly Pos Cell;
 
-        /// <summary>晶矿挡位：0 = 不掉（数据纪律：非奖励关条目一律 0，掉落判断不查回合类型——决策#17③）；1~3 = 低/中/高档。</summary>
+        /// <summary>掉矿旗标：0 = 不掉（数据纪律：非奖励关条目一律 0，掉落判断不查回合类型——决策#17③）；
+        /// 1 = 掉矿。档位不再按怪定死（2026-11-06 拍板：唯一掉矿怪=宝箱怪）——SpawnEncounter
+        /// 记账时会话随机抽 1~3 档，主线程抽完入账、预演战斗线程只读（线程安全保持）。</summary>
         public readonly int OreTier;
 
         /// <summary>怪物强度等级（决策 #19③/#20③：战绩页展示字段；普通关填表纪律 = 回合越靠后指标越高）。</summary>
@@ -114,8 +116,8 @@ namespace AutoChess.Game
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」MaxHp 必须 ≥ 1");
                 if (s.Stats.AttackInterval <= 0f || s.Stats.MoveInterval <= 0f)
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」间隔是 CombatSystem 的除数，必须 > 0");
-                if (s.OreTier < 0 || s.OreTier > 3)
-                    throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」OreTier 必须为 0~3");
+                if (s.OreTier < 0 || s.OreTier > 1)
+                    throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」OreTier 必须为 0 或 1（掉矿旗标；档位开战随机抽，2026-11-06 拍板）");
                 if (s.PowerLevel < 1)
                     throw new ArgumentException($"回合 {entry.Round}「{s.DisplayName}」PowerLevel 必须 ≥ 1");
                 if (s.SkillId < 0)
@@ -137,10 +139,16 @@ namespace AutoChess.Game
         /// 占位编成（结构 = 决策 #20；数值 = 7b 重定 2026-11-01：随我方金铲铲量级面板联动上调，
         /// 对着 7a 基线压测的"全面过易"结论整体加强——普通关 15~30 秒清场、精英关做战力检验门槛、
         /// Boss 血量 10000 为压测校准项，按 2700 tick 限时线微调）：
-        ///  · R1/5/10 奖励关配**特殊怪物**（晶矿鼠/晶矿魔偶/晶矿巨兽——专用怪种、战力较低、100% 掉矿，#20①）；
+        ///  · R1/5/10 奖励关配**特殊怪物宝箱怪**（专用怪种、战力较低、100% 掉矿，#20①）——
+        ///    2026-11-06 拍板：宝箱怪是唯一掉矿怪（晶矿鼠/魔偶/巨兽三怪种退役），
+        ///    掉矿档位不再按怪写死，SpawnEncounter 记账时会话随机抽 1~3 档（#17③ 修订）；
         ///  · R6/11 精英关 = 战力检验门槛（#20②）；
         ///  · 普通关 PowerLevel 填表纪律：回合越靠后指标越高（#20③，测试焊死不降）；
         ///  · R14 最终 Boss（#20④）；R15 隐藏 Boss 不进表（#20⑤）。
+        /// 怪种视觉映射（2026-11-06，表现层素材文件夹 0~11）：宝箱怪0/野狼1/石像傀儡2/幼龙3/魔眼妖4/
+        /// 刺毛虫5/幽灵6/石像巨人7/食人魔8/兽人酋长9/亡灵领主10/深渊魔王11——魔眼妖/刺毛虫为
+        /// 新增普通怪种占位名（视觉=素材文件夹 4/5），排位只做回合多样性（幽灵出场 10 次→7 次），
+        /// 各槽位数值不动 = 平衡零漂移；名字与排位均为占位、可改。
         /// 敌方 CritChance=0、MaxMana=0 是表数据纪律（D2-7），不写死代码——将来想要会暴击/施法的怪 = 改表。
         /// 抗性 20~60 区间（百分比公式口径；挂起#6 正式区间 20~120）。
         /// 摆位口径 = 左右分（2026-11-04 拍板：玩家 X0~3、敌方 X4~7；原前后分编成经
@@ -150,11 +158,11 @@ namespace AutoChess.Game
         {
             var t = new EnemyTable();
 
-            // ── R1 奖励关：晶矿鼠 ×2（特殊怪：战力低、挡位 1、必掉）──
+            // ── R1 奖励关：宝箱怪 ×2（特殊怪：战力低、必掉矿；档位开战随机抽 1~3）──
             t.Register(new EnemyRoundEntry(1, new EnemySpawn[]
             {
-                E("晶矿鼠", 180, 18, 20, new Pos(5, 1), oreTier: 1),
-                E("晶矿鼠", 180, 18, 20, new Pos(5, 2), oreTier: 1),
+                E("宝箱怪", 180, 18, 20, new Pos(5, 1), oreTier: 1),
+                E("宝箱怪", 180, 18, 20, new Pos(5, 2), oreTier: 1),
             }));
 
             // ── R2-4：普通关第一梯段（PowerLevel 1→2）──
@@ -167,7 +175,7 @@ namespace AutoChess.Game
             {
                 E("石像傀儡", 430, 42, 30, new Pos(4, 1), powerLevel: 2),
                 E("石像傀儡", 430, 42, 30, new Pos(5, 2), powerLevel: 2),
-                E("石像傀儡", 430, 42, 30, new Pos(4, 3), powerLevel: 2),
+                E("刺毛虫", 430, 42, 30, new Pos(4, 3), powerLevel: 2),   // 新怪种占位（视觉=素材文件夹5）：槽位数值不动
             }));
             t.Register(new EnemyRoundEntry(4, new EnemySpawn[]
             {
@@ -176,11 +184,11 @@ namespace AutoChess.Game
                 E("石像傀儡", 750, 45, 30, new Pos(5, 2), powerLevel: 2),
             }));
 
-            // ── R5 奖励关：晶矿魔偶 ×2（特殊怪：挡位 2）──
+            // ── R5 奖励关：宝箱怪 ×2（特殊怪：必掉矿；档位随机）──
             t.Register(new EnemyRoundEntry(5, new EnemySpawn[]
             {
-                E("晶矿魔偶", 420, 22, 25, new Pos(5, 1), oreTier: 2),
-                E("晶矿魔偶", 420, 22, 25, new Pos(5, 2), oreTier: 2),
+                E("宝箱怪", 420, 22, 25, new Pos(5, 1), oreTier: 1),
+                E("宝箱怪", 420, 22, 25, new Pos(5, 2), oreTier: 1),
             }));
 
             // ── R6 精英关：兽人酋长压阵 + 两个石像傀儡护卫（战力检验门槛：二星过渡过得去、一星杂牌过不去）──
@@ -196,7 +204,7 @@ namespace AutoChess.Game
             {
                 E("幽灵", 1050, 42, 30, new Pos(4, 1), attackInterval: 1.1f, powerLevel: 3),   // 幽灵出手快
                 E("幽灵", 1050, 42, 30, new Pos(5, 2), attackInterval: 1.1f, powerLevel: 3),
-                E("幽灵", 1050, 42, 30, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),
+                E("魔眼妖", 1050, 42, 30, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),   // 新怪种占位（视觉=素材文件夹4）：槽位数值不动
             }));
             t.Register(new EnemyRoundEntry(8, new EnemySpawn[]
             {
@@ -208,14 +216,14 @@ namespace AutoChess.Game
             {
                 E("食人魔", 3000, 118, 40, new Pos(5, 2), attackInterval: 1.4f, powerLevel: 4),   // 准精英体格
                 E("幽灵", 1350, 62, 35, new Pos(4, 1), attackInterval: 1.1f, powerLevel: 3),
-                E("幽灵", 1350, 62, 35, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),
+                E("魔眼妖", 1350, 62, 35, new Pos(4, 3), attackInterval: 1.1f, powerLevel: 3),   // 新怪种占位：槽位数值不动
             }));
 
-            // ── R10 奖励关：晶矿魔偶 + 晶矿巨兽（特殊怪：混挡位示例 2/3——挡位按怪写死，#17③）──
+            // ── R10 奖励关：宝箱怪 ×2（特殊怪：必掉矿；档位随机——原"混挡位示例"随按怪定档制退役）──
             t.Register(new EnemyRoundEntry(10, new EnemySpawn[]
             {
-                E("晶矿魔偶", 850, 35, 30, new Pos(5, 2), oreTier: 2),
-                E("晶矿巨兽", 1050, 42, 35, new Pos(4, 3), oreTier: 3),
+                E("宝箱怪", 850, 35, 30, new Pos(5, 2), oreTier: 1),
+                E("宝箱怪", 1050, 42, 35, new Pos(4, 3), oreTier: 1),
             }));
 
             // ── R11 精英关：亡灵领主 + 幽灵护卫（低费流三星检验、速升流八一星难过）──
@@ -232,7 +240,7 @@ namespace AutoChess.Game
                 E("石像巨人", 1650, 70, 40, new Pos(4, 1), attackInterval: 1.6f, powerLevel: 5),
                 E("石像巨人", 1650, 70, 40, new Pos(4, 3), attackInterval: 1.6f, powerLevel: 5),
                 E("幽灵", 700, 52, 35, new Pos(5, 0), attackInterval: 1.1f, powerLevel: 4),
-                E("幽灵", 700, 52, 35, new Pos(5, 4), attackInterval: 1.1f, powerLevel: 4),
+                E("魔眼妖", 700, 52, 35, new Pos(5, 4), attackInterval: 1.1f, powerLevel: 4),   // 新怪种占位：槽位数值不动
             }));
             t.Register(new EnemyRoundEntry(13, new EnemySpawn[]
             {
@@ -255,7 +263,7 @@ namespace AutoChess.Game
             return t;
         }
 
-        /// <summary>占位怪速记工厂：hp/atk/armor（armor 同时填双抗），攻速/移速/挡位/强度用可选参数覆盖。</summary>
+        /// <summary>占位怪速记工厂：hp/atk/armor（armor 同时填双抗），攻速/移速/掉矿旗标/强度用可选参数覆盖。</summary>
         private static EnemySpawn E(string name, int hp, int atk, int armor, Pos cell,
             float attackInterval = TrashAttackInterval, float moveInterval = TrashMoveInterval,
             int oreTier = 0, int powerLevel = 1, int skillId = 0)

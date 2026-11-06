@@ -3,7 +3,8 @@
     "rootNamespace": "AutoChess.EditorTools",
     "references": [
         "AutoChess.Game",
-        "AutoChess.Runtime"
+        "AutoChess.Runtime",
+        "AutoChess.Presentation"
     ],
     "includePlatforms": [
         "Editor"

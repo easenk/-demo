@@ -201,7 +201,9 @@ namespace AutoChess.Tests
         [Test]
         public void Ctor_InvalidMetadata_Throw()
         {
-            Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(3, 4), oreTier: 4)));    // 挡位只有 1~3
+            Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(3, 4), oreTier: 4)));    // 掉矿旗标只有 0/1
+            Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(3, 4), oreTier: 2)),    // 旧按怪定档制的写死档值已非法（2026-11-06 随机档拍板）
+                "旗标收紧到 0/1——档位开战随机抽，编成表不再允许写死 2/3");
             Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(3, 4), oreTier: -1)));
             Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(3, 4), powerLevel: 0)));
             Assert.Throws<ArgumentException>(() => Table(Spawn(new Pos(8, 4))));   // X 越界（宽 8，合法 0~7）

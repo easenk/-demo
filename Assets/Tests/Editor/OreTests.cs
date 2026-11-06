@@ -11,8 +11,9 @@ namespace AutoChess.Tests
     /// 分节契约（每条测试的断言消息自带语义）：
     ///  · 表构造：挡位 1~3 且三挡齐全不重复、池非空、奖励 id 唯一 ≥1、池内 id 必须已登记、
     ///    类型字段自洽（金币/经验/拆卸器 Amount&gt;0、装备 EquipmentId&gt;0）——建表事故构造期炸
-    ///  · 掉落记账：只记编成挡位&gt;0（#17③ 不查回合类型）、死亡格正确、事件字段全、不占棋盘格（#17⑤）、
-    ///    玩家单位死亡永不掉、默认编成端到端（R1 矿鼠必掉 / R2 野狼不掉=填表纪律）
+    ///  · 掉落记账：只记掉矿旗标&gt;0（#17③ 不查回合类型；档位=开战时会话随机抽 1~3——2026-11-06 拍板，
+    ///    不再按怪定档）、死亡格正确、事件字段全、不占棋盘格（#17⑤）、
+    ///    玩家单位死亡永不掉、默认编成端到端（R1 宝箱怪必掉 / R2 野狼不掉=填表纪律）
     ///  · 留存与门禁：战败已掉的矿照样留（#17⑧）、未死的怪不掉、跨 EnterPrep 留存、
     ///    场上有矿 StartBattle 纯拒绝四不动（#17⑥）、捡完解锁、非备战期 PickOre 全拒
     ///  · 发放四路径（P3-8，2026-10-29 修订；批次6 起背包消费者接线）：
@@ -46,7 +47,7 @@ namespace AutoChess.Tests
             int range = 1, int crit = 0, params SynergyId[] tags)
             => new CharacterDef(id, $"棋子{id}", 1, Stats(hp, atk, atkIv, moveIv, range, crit), tags);
 
-        /// <summary>敌方速记：挡位可传（默认 0 不掉）、crit 恒 0（表数据纪律 D2-7）。</summary>
+        /// <summary>敌方速记：掉矿旗标可传（默认 0 不掉；1 = 掉，档位会话随机抽）、crit 恒 0（表数据纪律 D2-7）。</summary>
         private static EnemySpawn Foe(int hp, int atk, Pos cell, int oreTier = 0,
             float atkIv = 1.3f, int range = 1, string name = "怪")
             => new EnemySpawn(name, Stats(hp, atk, atkIv, 1f, range), cell, oreTier, 1);
@@ -61,17 +62,19 @@ namespace AutoChess.Tests
         private static OreDef Gear(int id, int equipId) => new OreDef(id, OreRewardType.Equipment, "装备占位", 0, equipId);
         private static OreDef Tool(int id, int count) => new OreDef(id, OreRewardType.UnsmithTool, "拆卸器占位", count, 0);
 
-        /// <summary>注入用矿池：T1 传定制条目，T2/T3 自动补占位（OreTable 三挡齐全校验的要求）。</summary>
-        private static OreTable Pool(params OreDef[] tier1)
+        /// <summary>注入用矿池：三挡同池（同 id 进多挡池 = 构造明文允许）——2026-11-06 随机档后
+        /// 测试与"抽中哪一档"解耦：任何档抽中的都是同一组条目，奖励断言不依赖随机抽档。
+        /// 三挡齐全校验由"三挡都填同一组 id"天然满足。</summary>
+        private static OreTable Pool(params OreDef[] defs)
         {
-            var defs = new List<OreDef>(tier1) { Gold(21, 1), Gold(31, 1) };
             var ids = new List<int>();
-            foreach (var d in tier1) ids.Add(d.Id);
+            foreach (var d in defs) ids.Add(d.Id);
+            int[] arr = ids.ToArray();
             return new OreTable(defs, new[]
             {
-                new OreTierDef(1, ids.ToArray()),
-                new OreTierDef(2, new[] { 21 }),
-                new OreTierDef(3, new[] { 31 }),
+                new OreTierDef(1, arr),
+                new OreTierDef(2, arr),
+                new OreTierDef(3, arr),
             });
         }
 
@@ -148,7 +151,8 @@ namespace AutoChess.Tests
             }
         }
 
-        /// <summary>标准"掉一颗矿"链：R1 单只挡位怪（range 5 原地不移动），玩家远程击杀。
+        /// <summary>标准"掉一颗矿"链：R1 单只掉矿怪（旗标 1；range 5 原地不移动），玩家远程击杀。
+        /// 档位由会话随机抽 1~3（2026-11-06 起）——调用方注入 Pool 三挡同池即与抽档无关。
         /// 返回 (会话, 矿实例 id, 掉落事件, 开矿事件收集器)。进阶断言在调用方续写。</summary>
         private static GameSession DropOne(EventBus bus, int tier, OreTable ores, out int oreId)
         {
@@ -300,11 +304,11 @@ namespace AutoChess.Tests
             var dropped = new List<OreDroppedEvent>();
             bus.Subscribe<OreDroppedEvent>(e => dropped.Add(e));
 
-            // 两只不同挡位的原地怪（range 5 对射不移动）→ 死在自己格上
+            // 两只掉矿怪（旗标 1；range 5 对射不移动）→ 死在自己格上；档位各自由会话随机抽
             var enemies = new EnemyTable(new[]
             {
                 Round(1, Foe(30, 0, new Pos(5, 3), oreTier: 1, range: 5, name: "甲"),
-                       Foe(30, 0, new Pos(5, 4), oreTier: 3, range: 5, name: "乙")),
+                       Foe(30, 0, new Pos(5, 4), oreTier: 1, range: 5, name: "乙")),
             });
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies));
             Assert.IsTrue(s.StartRun());
@@ -312,12 +316,12 @@ namespace AutoChess.Tests
             Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
             PlayRound(s);
 
-            Assert.AreEqual(2, s.OresOnGround.Count, "两只挡位怪全灭 → 恰掉两颗");
+            Assert.AreEqual(2, s.OresOnGround.Count, "两只掉矿怪全灭 → 恰掉两颗");
             Assert.AreEqual(2, dropped.Count, "各广播一条 OreDroppedEvent");
-            var tiers = new HashSet<int> { dropped[0].Tier, dropped[1].Tier };
-            CollectionAssert.AreEqual(new[] { 1, 3 }, tiers.OrderBy(x => x).ToArray(), "挡位按编成各带各的");
             foreach (var e in dropped)
             {
+                Assert.GreaterOrEqual(e.Tier, 1, "随机抽的档位下界 1");
+                Assert.LessOrEqual(e.Tier, 3, "随机抽的档位上界 3");
                 OreDrop drop = s.OresOnGround.First(d => d.Id == e.OreId);
                 Assert.AreEqual(drop.Tier, e.Tier, "事件挡位 = 掉落物挡位");
                 Assert.AreEqual(drop.Cell, e.Cell, "事件位置 = 掉落物位置");
@@ -370,18 +374,21 @@ namespace AutoChess.Tests
             var dropped = new List<OreDroppedEvent>();
             bus.Subscribe<OreDroppedEvent>(e => dropped.Add(e));
 
-            // 默认编成端到端：R1 奖励关晶矿鼠 ×2（挡位 1，100% 掉，#20①）→ 必掉 2 颗；
+            // 默认编成端到端：R1 奖励关宝箱怪 ×2（掉矿旗标 1、100% 掉，#20①；档位开战随机抽）→ 必掉 2 颗；
             // R2 普通关野狼 OreTier=0（填表纪律 #17③——掉落判断不查回合类型，非奖励关不掉全靠编成写 0）
             var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), EnemyTable.Default));
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
             Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
 
-            PlayRound(s);   // R1：杀两鼠 → 掉 2
-            Assert.AreEqual(2, s.OresOnGround.Count, "R1 晶矿鼠必掉（100% 掉落）");
-            Assert.AreEqual(2, dropped.Count, "两只鼠各广播一条");
+            PlayRound(s);   // R1：杀两宝箱怪 → 掉 2
+            Assert.AreEqual(2, s.OresOnGround.Count, "R1 宝箱怪必掉（100% 掉落）");
+            Assert.AreEqual(2, dropped.Count, "两只宝箱怪各广播一条");
             foreach (var e in dropped)
-                Assert.AreEqual(1, e.Tier, "默认编成 R1 矿鼠挡位 1");
+            {
+                Assert.GreaterOrEqual(e.Tier, 1, "默认编成 R1 档位=随机抽（下界）");
+                Assert.LessOrEqual(e.Tier, 3, "默认编成 R1 档位=随机抽（上界）");
+            }
 
             Assert.IsTrue(s.StartPrep(), "R1 → R2 备战（打完停 Settlement，捡矿在备战期）");
             int droppedAfterR1 = dropped.Count;
@@ -415,7 +422,9 @@ namespace AutoChess.Tests
             Assert.IsFalse(s.Combat.PlayerWon, "B 反杀玩家 → 战败");
             Assert.AreEqual(1, s.OresOnGround.Count, "恰一颗：A 死掉、B 活着不掉");
             int oreId = s.OresOnGround[0].Id;
-            Assert.AreEqual(1, s.OresOnGround[0].Tier, "掉的是 A 的挡位 1 矿");
+            Assert.GreaterOrEqual(s.OresOnGround[0].Tier, 1, "档位=随机抽 1~3（下界）");
+            Assert.LessOrEqual(s.OresOnGround[0].Tier, 3, "档位=随机抽 1~3（上界）");
+            Assert.AreEqual(new Pos(4, 3), s.OresOnGround[0].Cell, "掉的是 A 的矿（A 的死亡格）");
             Assert.AreEqual(1, dropped.Count, "恰一条掉落事件");
             Assert.AreEqual(GamePhase.Settlement, s.Phase, "战败后停结算位");
 
@@ -510,7 +519,8 @@ namespace AutoChess.Tests
             var opened = new List<OreOpenedEvent>();
             bus.Subscribe<OreOpenedEvent>(e => opened.Add(e));
 
-            // 两挡各一颗：T1 池 = 金 +100；T2 池 = 金 +200（Pool 的 T2 占位换金 +200）
+            // 分档池专测：T1 池 = 金 +100；T2 池 = 金 +200。档位开战随机抽（2026-11-06）——
+            // 种子 20261030 = 探针锁定：两颗恰好抽中 T1/T2 各一，本测试的"各查各挡位的池"才可断言
             var ores = new OreTable(
                 new[] { Gold(11, 100), Gold(21, 200), Gold(31, 1) },
                 new[]
@@ -521,10 +531,10 @@ namespace AutoChess.Tests
                 });
             var enemies = new EnemyTable(new[]
             {
-                Round(1, Foe(30, 0, new Pos(5, 3), oreTier: 1, range: 5, name: "低挡"),
-                       Foe(30, 0, new Pos(5, 4), oreTier: 2, range: 5, name: "高挡")),
+                Round(1, Foe(30, 0, new Pos(5, 3), oreTier: 1, range: 5, name: "甲"),
+                       Foe(30, 0, new Pos(5, 4), oreTier: 1, range: 5, name: "乙")),
             });
-            var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, ores));
+            var s = New(bus, Tables(SingleChar(hp: 500, atk: 100, range: 5), enemies, ores), 20261030u);
             Assert.IsTrue(s.StartRun());
             Assert.IsTrue(s.Buy(0));
             Assert.IsTrue(s.PlaceOnBoard(s.Bench[0].Id, new Pos(0, 0)));
@@ -556,13 +566,14 @@ namespace AutoChess.Tests
             bus.Subscribe<GoldChangedEvent>(e => gold.Add(e));
 
             var ores = Pool(Gold(11, 100));
-            var s = DropOne(bus, 1, ores, out int oreId);   // 死亡格 (4,4)、挡位 1
+            var s = DropOne(bus, 1, ores, out int oreId);   // 死亡格 (4,4)；Pool 三挡同池 = 抽中哪档都发同一条
+            int drawnTier = s.OresOnGround[0].Tier;        // 随机抽中的档（1~3），开矿前读走
             int goldBefore = s.Eco.Gold;
             Assert.IsTrue(s.PickOre(oreId));
 
             var e1 = opened.Single();
             Assert.AreEqual(oreId, e1.OreId, "同一颗掉落物实例");
-            Assert.AreEqual(1, e1.Tier);
+            Assert.AreEqual(drawnTier, e1.Tier, "事件档位 = 随机抽中的档");
             Assert.AreEqual(new Pos(4, 4), e1.Cell, "开矿位置 = 死亡格");
             Assert.AreEqual(11, e1.OreDefId, "抽中的定义 id（单条池必中）");
             Assert.AreEqual(OreRewardType.Gold, e1.RewardType);

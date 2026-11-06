@@ -101,7 +101,7 @@ namespace AutoChess.Game
         private bool _policyDue;                                   // 奖励关胜利记账（批次7 策略弹选消费）
 
         // ── 晶矿（批次6）：掉落记账 + 场上掉落物 ──
-        private readonly Dictionary<int, int> _oreTierByUnitId = new Dictionary<int, int>(); // 本场记账：敌方 unitId → 挡位（只记 OreTier>0；每场 SpawnEncounter 重建）
+        private readonly Dictionary<int, int> _oreTierByUnitId = new Dictionary<int, int>(); // 本场记账：敌方 unitId → 挡位（只记 OreTier>0 的怪；档位=开战时会话随机抽 1~3，2026-11-06 拍板；每场 SpawnEncounter 重建。注意：阶段5 战前快照必须含本账本——档位已不来自编成表，重演/续玩恢复离不开它）
         private readonly List<OreDrop> _oresOnGround = new List<OreDrop>();   // 场上掉落物：只增不减，唯一出口 PickOre（战败已掉的矿照样留，#17⑧）
 
         // ── 策略（批次7）：候选 / 已选 / 实例留存（2026-10-27 拍板：修饰器只挂场上，重算制） ──
@@ -715,8 +715,10 @@ namespace AutoChess.Game
                             $"回合 {Round}「{spawn.DisplayName}」摆位失败且敌方半场无空格——编成表数据事故");
                     _enemyRoster.Add(u);
                 }
-                // 掉落记账（批次6）：只看编成表挡位字段、不查回合类型（#17③——非奖励关不掉靠填表纪律实现）
-                if (spawn.OreTier > 0) _oreTierByUnitId[u.Id] = spawn.OreTier;
+                // 掉落记账（批次6）：只看编成表掉矿旗标、不查回合类型（#17③——非奖励关不掉靠填表纪律实现）；
+                // 档位=会话随机抽 1~3（2026-11-06 拍板：不再按怪定档，宝箱怪=唯一掉矿怪）——
+                // 抽骰发生在 StartBattle 主线程（SpawnEncounter 内），抽完入账后预演战斗线程只读本账本（#23① 线程安全）
+                if (spawn.OreTier > 0) _oreTierByUnitId[u.Id] = _random.NextInt(1, 4);
             }
         }
 

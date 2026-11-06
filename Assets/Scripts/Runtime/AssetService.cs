@@ -60,5 +60,22 @@ namespace AutoChess.Runtime
             _sceneHandle = _package.LoadSceneAsync(location);
             Debug.Log($"[AssetService] 场景加载请求已发出: {location}");
         }
+
+        /// <summary>同步加载单个资产（批次4C：UnitActorClipSet SO / 材质等小件，开战前一次性预载）。
+        /// 为什么是非泛型签名：热更代码直接调 YooAsset 泛型方法会踩 AOT 泛型补充元数据坑——
+        /// 门面封死泛型、热更侧拿到 UnityEngine.Object 后自行 cast（cast 在热更程序集内完成，无坑）。
+        /// YooAsset 3.0.6 的非泛型重载 LoadAssetSync(string) 实测存在（ResourcePackage.cs L557）。
+        /// 句柄不释放=资产常驻（会话级缓存语义，符合本工程一次性预载用法）。</summary>
+        public static UnityEngine.Object LoadAsset(string location)
+        {
+            if (!IsReady) { Debug.LogError("[AssetService] 包未就绪"); return null; }
+            AssetHandle handle = _package.LoadAssetSync(location);
+            if (handle == null || handle.AssetObject == null)
+            {
+                Debug.LogError($"[AssetService] 资产加载失败: {location}");
+                return null;
+            }
+            return handle.AssetObject;
+        }
     }
 }

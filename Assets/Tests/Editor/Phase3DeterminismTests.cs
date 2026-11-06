@@ -14,7 +14,7 @@ namespace AutoChess.Tests
     ///
     /// 场景（注入包 + 固定脚本，无决策器——操作序列写死，两 Session 必然同步）：
     ///  · R1 奖励关：验收术士（带技能 13 奥术飞弹：魔法 / 1 星基础 60 / 法强系数 55 / 施法距离 3 / 锚点中心 3x3）
-    ///    vs 双挡位矿鼠（T1 装备矿 / T2 拆卸器矿）→ 必胜 → 掉两矿；
+    ///    vs 双宝箱怪（掉矿旗标 1；档位开战随机抽——种子探针锁定 {1,2}：T1 装备矿 + T2 拆卸器矿）→ 必胜 → 掉两矿；
     ///  · R2 备战：捡装备矿（物理散件入包）→ 捡拆卸器矿（+2）→ 选策略「魔契」
     ///    （法术散件 + 拆卸器 ×1 + 增伤 20% 钩子 + 敌方灼烧钩子）
     ///    → 穿物理散件（槽 0）→ 升级成分支 0「输出」（+20 攻，花 5 金）
@@ -156,8 +156,9 @@ namespace AutoChess.Tests
                 {
                     // 400 血：3 次普攻（120）后剩 280 > 技能 115 → 首跳施法非致死（全值 115 上事件流，
                     // 不吃 TakeDamage 的死亡截断——基准对照行的断言依据；7c-2 数值下 200 血会被首跳截断）
-                    new EnemySpawn("矿鼠甲", FoeStats(400, 0), new Pos(3, 4), 1, 1),   // T1 装备矿
-                    new EnemySpawn("矿鼠乙", FoeStats(400, 0), new Pos(5, 4), 2, 1),   // T2 拆卸器矿
+                    // 掉矿旗标全 1；档位开战随机抽（种子锁定 {1,2}：一颗 T1 装备矿、一颗 T2 拆卸器矿）
+                    new EnemySpawn("宝箱怪甲", FoeStats(400, 0), new Pos(3, 4), 1, 1),
+                    new EnemySpawn("宝箱怪乙", FoeStats(400, 0), new Pos(5, 4), 1, 1),
                 }),
                 new EnemyRoundEntry(2, new[]
                 {
@@ -235,7 +236,7 @@ namespace AutoChess.Tests
             int casterId = s.Bench[0].Id;
             Assert.AreEqual(13, s.Bench[0].SkillId, "买的棋带技能 13（编表整链路）");
             Assert.IsTrue(s.PlaceOnBoard(casterId, new Pos(3, 2)));
-            BattleToEnd(s);   // R1 奖励关：杀双鼠 → 掉 T1/T2 各一矿
+            BattleToEnd(s);   // R1 奖励关：杀双宝箱怪 → 掉 T1/T2 各一矿（种子探针锁定）
 
             // ── R2 备战：矿 → 策略 → 装备四连 ──
             Assert.IsTrue(s.StartPrep());
@@ -273,12 +274,17 @@ namespace AutoChess.Tests
 
         // ─────────────────────── 主验收：3 组种子 × 双 Session 逐条一致 ───────────────────────
 
+        // 宝箱怪随机档（2026-11-06 拍板）配套种子：探针锁定 R1 双抽恰好 {1,2}（T1 装备矿 + T2 拆卸器矿）——
+        // 与旧"按怪定档"制的产出完全一致 → 指纹断言零漂移。将来随机流消耗位置变动导致红时，
+        // 按"改表必红"哲学重扫种子并同步注释。
+        private static readonly uint[] ScenarioSeeds = { 20261030u, 20261031u, 20261033u };
+
         [Test]
         public void FullScenario_SameSeedSameScript_IdenticalStreamsAndFinalState()
         {
             for (int run = 0; run < 3; run++)
             {
-                uint seed = (uint)(20261030 + run * 17);
+                uint seed = ScenarioSeeds[run];
                 var a = PlayScenario(seed);
                 var b = PlayScenario(seed);
 
@@ -322,7 +328,7 @@ namespace AutoChess.Tests
         [Test]
         public void ScenarioCoverage_NewSystemsLeaveFingerprints()
         {
-            var (s, rec) = PlayScenario(20261030u);
+            var (s, rec) = PlayScenario(ScenarioSeeds[0]);
             var log = rec.Log;
 
             // 技能：蓝 30 / 命中 +10 → 每 3 次出手一施法；两场战斗都有施法
