@@ -44,6 +44,10 @@ namespace AutoChess.Presentation
         private readonly Dictionary<int, UnitActorClipSet> _clipSets = new Dictionary<int, UnitActorClipSet>(32);
         private Material _billboardMat;
 
+        // ── 视觉资产缓存（批次4D）：弹体/特效预制体模板 + 撮合时的 unitId→棋子id 账本 ──
+        private readonly Dictionary<string, GameObject> _effectPrefabs = new Dictionary<string, GameObject>(32);
+        private Dictionary<int, int> _charIdByUnit = new Dictionary<int, int>(24);
+
         // ── 调试观察口（验收脚本只读） ──
         public bool DebugBusy => _busy;
         public int DebugRound => _session != null ? _session.Round : 0;
@@ -62,15 +66,16 @@ namespace AutoChess.Presentation
 
             _player.Finished += OnPlaybackFinished;
 
-            LoadVisualAssets();          // 30 个烘焙 SO + 立牌材质（缺失=烘焙没跑，日志点名）
-            _view.Bind(_player, _billboardMat);
+            LoadVisualAssets();          // 30 个烘焙 SO + 立牌材质 + 4D 弹体/特效预制体（缺失=烘焙/搬移没跑，日志点名）
+            _view.Bind(_player, _billboardMat, _effectPrefabs);
 
             NewRun();
         }
 
         // ─────────────────────── 视觉资产（批次4C：烘焙 SO 预载 + 撮合解析） ───────────────────────
 
-        /// <summary>预载全部视觉资产：18 角色 + 12 怪种 SO、立牌材质（路径真源 = UnitActorConfig）。</summary>
+        /// <summary>预载全部视觉资产：18 角色 + 12 怪种 SO、立牌材质、4D 弹体/特效预制体
+        /// （路径真源 = UnitActorConfig 与 EffectVisualConfig）。</summary>
         private void LoadVisualAssets()
         {
             for (int charId = 1; charId <= 18; charId++) LoadClipSet(charId);
@@ -79,6 +84,14 @@ namespace AutoChess.Presentation
             _billboardMat = AssetService.LoadAsset("Assets/Res/Art/UnitActorClips/M_Billboard") as Material;
             if (_billboardMat == null)
                 Log("立牌材质缺失：Res/Art/UnitActorClips/M_Billboard——先跑菜单「工具/表现层序列帧烘焙」（会自动补建）");
+
+            // 4D：弹体/特效预制体（去扩展名换 YooAsset location——M_Billboard 同款口径）
+            foreach (string path in EffectVisualConfig.AllPaths())
+            {
+                var prefab = AssetService.LoadAsset(path.Substring(0, path.Length - ".prefab".Length)) as GameObject;
+                if (prefab == null) Log($"特效预制体缺失：{path}");
+                else _effectPrefabs[path] = prefab;
+            }
         }
 
         private void LoadClipSet(int visualKey)
@@ -97,10 +110,12 @@ namespace AutoChess.Presentation
         {
             var visuals = new Dictionary<int, ResolvedUnitVisual>(24);
             var chars = GameTables.Default.Characters;
+            _charIdByUnit = new Dictionary<int, int>(24);   // 4D：命中反馈分系与弹体映射的账本（敌方怪种无棋子 id）
 
             foreach (Unit u in _session.PlayerBoard)
             {
                 if (u.CharId < 1 || u.CharId > 18) continue;
+                _charIdByUnit[u.Id] = u.CharId;
                 if (!ResolveOne(visuals, u.Id, u.CharId, chars.Get(u.CharId).BaseStats.AttackInterval,
                         chars.Get(u.CharId).BaseStats.MaxMana))
                     Log($"我方单位 {u.Id}（棋子 {u.CharId}）视觉缺失——该单位不上台");
@@ -145,18 +160,34 @@ namespace AutoChess.Presentation
             _session = new GameSession(new EventBus(), _seed, GameTables.Default);
             if (!_session.StartRun()) { Log("StartRun 被拒——调试对局建立失败"); return; }
 
-            // L8 满级 + 注资 + 买满备战席（架上任意有货就买——内容随种子，与预演基准同款）
+            // L8 满级 + 注资 + 优先买技能/远程大户（4D 验收口径：画面要可验收——弹道与技能视觉有得演；
+            // 与预演基准的随机买是两码事，调试驱动不复现压测分布）。货架按优先级挑最靠前的买，
+            // 没有想要的就刷新（限量 60 次——300 金的刷新预算 120，余量买人足够）。
             _session.Eco.AddGold(300);
             while (_session.Eco.Level < 8)
                 if (!_session.BuyXp()) break;
-            int guard = 0;
-            while (_session.Bench.Count < GameSession.BenchCapacity && guard++ < 100)
+            int[] prefer = { 10, 12, 13, 16, 9, 11, 14, 18, 15, 6, 2, 5, 8, 4, 1, 3, 7, 17 };
+            int guard = 0, refreshGuard = 0;
+            while (_session.Bench.Count < GameSession.BenchCapacity && guard++ < 300)
             {
-                int slot = -1;
+                int slot = -1, bestRank = int.MaxValue;
                 for (int i = 0; i < ShopSystem.Slots; i++)
-                    if (_session.Shop.Offers[i].Id != 0) { slot = i; break; }
-                if (slot < 0) { if (!_session.RefreshShop()) break; continue; }
-                if (!_session.Buy(slot)) break;
+                {
+                    int id = _session.Shop.Offers[i].Id;
+                    if (id == 0) continue;
+                    int rank = Array.IndexOf(prefer, id);
+                    if (rank >= 0 && rank < bestRank) { bestRank = rank; slot = i; }
+                }
+                if (slot < 0)
+                {
+                    if (refreshGuard++ >= 60 || !_session.RefreshShop()) break;
+                    continue;
+                }
+                if (!_session.Buy(slot))
+                {
+                    if (refreshGuard++ >= 60 || !_session.RefreshShop()) break;
+                    continue;
+                }
             }
             Log($"调试对局就绪：种子 {_seed} · L{_session.Eco.Level} · 备战席 {_session.Bench.Count} 人 —— 点「开战」逐场播放");
         }
@@ -210,15 +241,19 @@ namespace AutoChess.Presentation
             PlannedTimeline timeline = new BattlePlanner().Plan(result.Stream, BuildTimingTable(result, visuals));
             Log($"预演完成：{result.TickCount} 步 · 流 {result.Stream.Count} 条 → 时间轴 {timeline.Count} 节点 · Makespan {timeline.Makespan:F1}s");
 
+            // 4D：把时间轴展开成弹道/特效演出计划（出弹/爆炸/短爆时刻预排，视图到点即播）
+            var plan = ProjectileEffectPlan.Build(timeline, visuals, _charIdByUnit, GameTables.Default.Skills);
+            Log($"演出计划：弹道/特效 {plan.Count} 条");
+
             if (timeline.Count == 0)
             {
                 // 秒胜链：战斗根本没发生——清台后直接结算
-                _view.BeginBattle(null, null);
+                _view.BeginBattle(null, null, plan, _charIdByUnit);
                 SettleAfterPlayback();
                 return;
             }
 
-            _view.BeginBattle(result.Snapshots, visuals);   // 开战帧建立演员（序列帧真形态）
+            _view.BeginBattle(result.Snapshots, visuals, plan, _charIdByUnit);   // 开战帧建立演员 + 装演出计划
             _player.Play(timeline);
             Log($"R{_session.Round} 开始播放（速率旋钮随时可切）");
         }
@@ -310,8 +345,8 @@ namespace AutoChess.Presentation
 
         private void OnGUI()
         {
-            var panel = new Rect(12f, 12f, 372f, 320f);
-            GUI.Box(panel, "自走棋 · 战台调试（批次4C）");
+            var panel = new Rect(12f, 12f, 372f, 344f);
+            GUI.Box(panel, "自走棋 · 战台调试（批次4D）");
 
             float y = panel.y + 26f;
             if (_session == null)
@@ -338,7 +373,7 @@ namespace AutoChess.Presentation
                 if (GUI.Button(new Rect(panel.x + 196f, y, 160f, 30f), "重开一局（换种子）"))
                 {
                     _seed++;
-                    _view.BeginBattle(null, null);
+                    _view.BeginBattle(null, null, ProjectileEffectPlan.Empty, _charIdByUnit);
                     _log.Clear();
                     NewRun();
                 }
@@ -364,6 +399,9 @@ namespace AutoChess.Presentation
             y += 22f;
             GUI.Label(new Rect(panel.x + 16f, y, 340f, 22f),
                 $"场上 {_view.ActorCount} 体（阵亡 {_view.DeadCount}）· 矿 {_view.OreCount} 个");
+            y += 22f;
+            GUI.Label(new Rect(panel.x + 16f, y, 340f, 22f),
+                $"弹体 {_view.ProjectileSpawnCount}（在途 {_view.InFlightCount}）· 特效 {_view.EffectSpawnCount}");
             y += 26f;
 
             // 日志尾

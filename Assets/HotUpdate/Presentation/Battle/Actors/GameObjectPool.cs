@@ -38,16 +38,5 @@ namespace AutoChess.Presentation
             go.transform.SetParent(_root, false);
             _stack.Push(go);
         }
-
-        /// <summary>清空池（场景销毁时用——池里的件是场景物体，不销毁会漏）。</summary>
-        public void Dispose()
-        {
-            while (_stack.Count > 0)
-            {
-                GameObject go = _stack.Pop();
-                if (go != null) Object.Destroy(go);
-            }
-            if (_root != null) Object.Destroy(_root.gameObject);
-        }
     }
 }

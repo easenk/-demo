@@ -4,7 +4,8 @@
     "references": [
         "AutoChess.Game",
         "AutoChess.Runtime",
-        "AutoChess.Presentation"
+        "AutoChess.Presentation",
+        "YooAsset.Editor"
     ],
     "includePlatforms": [
         "Editor"

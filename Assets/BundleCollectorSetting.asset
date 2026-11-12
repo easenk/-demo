@@ -23,7 +23,7 @@ MonoBehaviour:
     LocationToLower: 0
     IncludeAssetGUID: 0
     AutoCollectShaders: 0
-    IgnoreRuleName: NormalIgnoreRule
+    IgnoreRuleName: IgnoreAnimatorControllerRule
     Groups:
     - GroupName: ResAssets
       GroupDesc: 
