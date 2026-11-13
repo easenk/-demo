@@ -14,6 +14,10 @@ namespace AutoChess.Presentation
     /// 派发时丢弃"同一单位 Start ≥ 倒地Start"的动作节点（Move/Attack/Cast——病态级联防御：
     /// 资产严重违约下死者被推后到倒地之后的迟到动作不再演出；合规资产下不可达，构造上兜底）。
     /// 交付节点（伤害/回蓝/让格/终局等）不受封口——账目与终局照常兑现。
+    ///
+    /// 排空域（批次4E）：终局（投完且 playhead ≥ Makespan）后时钟不冻结、继续按速率推进——
+    /// 晚生特效寿命/收招定格/让格淡出全按 playhead 到点自尽，排空闸门（BattleDrainGate）
+    /// 读画面计数收尾。终局判定只锁"派发完且过 Makespan"这个时刻（Finished 信号），不锁时钟停走。
     /// </summary>
     public sealed class TimelineCursor
     {
@@ -64,11 +68,11 @@ namespace AutoChess.Presentation
         /// 推进 deltaSeconds 真实秒，派发所有 Start ≤ playhead 的未派发节点
         /// （时间轴既定的 (Start,Seq) 全序——跨目标同刻合法、同刻按 Seq 分先后）。
         /// onNode 为 null 时只走钟（测试/拖动场景）。返回本次派发条数。
+        /// 终局后不早退——排空域时钟继续走（4E），派发恒零（可派发的早已派完）。
         /// </summary>
         public int Advance(float deltaSeconds, Action<PlannedNode> onNode)
         {
             if (deltaSeconds < 0f) throw new ArgumentOutOfRangeException(nameof(deltaSeconds));
-            if (IsFinished) return 0;
             _time += deltaSeconds * _rate;
 
             int dispatched = 0;

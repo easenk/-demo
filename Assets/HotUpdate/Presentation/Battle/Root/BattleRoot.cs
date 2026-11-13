@@ -8,12 +8,15 @@ using UnityEngine;
 namespace AutoChess.Presentation
 {
     /// <summary>
-    /// 战台组合根（#23④，批次B2 立骨架、批次4C 接序列帧真视觉）：运行时串联 会话 → 视觉撮合 →
-    /// 预演（后台线程）→ 规划 → 播放 全链。
+    /// 战台组合根（#23④，批次B2 立骨架、批次4C 接序列帧真视觉、批次4D 接弹道与技能视觉、
+    /// 批次4E 接排空闸门）：运行时串联 会话 → 视觉撮合 → 预演（后台线程）→ 规划 → 播放 →
+    /// 排空闸门 → 结算 全链。
     /// 调试驱动形态：整局会话 = L8 满级 + 注资买满阵容（预演基准同款构建，内容随种子）；
     /// 面板逐场点「开战」——预演后台 Task → await 主线程续接（预演期间主线程不碰会话，
-    /// #23① 纪律）→ 规划器排时间轴 → TimelinePlayer 播放 → 播完 Finished 即结算
-    /// （SettleBattle）——这是 4E 正式排空闸门接入前的调试口径，闸门四条件/保险丝归 4E。
+    /// #23① 纪律）→ 规划器排时间轴 → TimelinePlayer 播放 →【4E 排空闸门】事件流投完后
+    /// 等画面彻底演完（四条件：①投完含终局条/②演绎空=动作在途+存活特效+飘字+未发火条目
+    /// 全零/③在途弹清零/④倒地播完）才开闸回调 SettleBattle——结算唯一入口（结算隔离），
+    /// 两级保险丝兜底（排空超时 5 表演秒 / 播放绝对熔断 900 墙钟秒，正常流程永不触发）。
     /// 场景零脚本铁律：本组件由 SceneFlowDriver 在 Main 激活后运行时装配。
     /// </summary>
     public sealed class BattleRoot : MonoBehaviour
@@ -40,6 +43,11 @@ namespace AutoChess.Presentation
         private bool _lastWon;
         private readonly List<string> _log = new List<string>(16);
 
+        // ── 排空闸门（批次4E）：null=不在战斗播放期；开闸后 _gateReason 记最近一次原因 ──
+        private BattleDrainGate _gate;
+        private string _gateReason = "";
+        private float _desiredRate = 1f;   // 倍速偏好跨场记忆（Play 重建游标后回放——4E 完整接入）
+
         // ── 视觉资产缓存（批次4C）：30 个烘焙 SO + 立牌材质，Start 时一次性预载（会话级常驻） ──
         private readonly Dictionary<int, UnitActorClipSet> _clipSets = new Dictionary<int, UnitActorClipSet>(32);
         private Material _billboardMat;
@@ -53,6 +61,10 @@ namespace AutoChess.Presentation
         public int DebugRound => _session != null ? _session.Round : 0;
         public GamePhase DebugPhase => _session != null ? _session.Phase : GamePhase.PreRun;
         public bool DebugRunOver => _session != null && _session.RunOver;
+        /// <summary>4E：闸门是否还关着（战斗播放/排空期=关）。</summary>
+        public bool DebugGateClosed => _gate != null;
+        /// <summary>4E：最近一次开闸原因（未开过=空串；正常=OpenAllClear）。</summary>
+        public string DebugGateReason => _gateReason;
 
         private void Start()
         {
@@ -247,23 +259,74 @@ namespace AutoChess.Presentation
 
             if (timeline.Count == 0)
             {
-                // 秒胜链：战斗根本没发生——清台后直接结算
+                // 秒胜链：战斗根本没发生——空时间轴走同一闸门（首帧即全零开），结算入口唯一
                 _view.BeginBattle(null, null, plan, _charIdByUnit);
-                SettleAfterPlayback();
+                _player.Play(timeline);
+                _gate = new BattleDrainGate(Time.realtimeSinceStartup);
+                Log("秒胜链：空时间轴——闸门直开结算");
                 return;
             }
 
             _view.BeginBattle(result.Snapshots, visuals, plan, _charIdByUnit);   // 开战帧建立演员 + 装演出计划
             _player.Play(timeline);
-            Log($"R{_session.Round} 开始播放（速率旋钮随时可切）");
+            _player.Rate = _desiredRate;       // 倍速偏好跨场生效（4E：Play 重建游标后回放）
+            _gate = new BattleDrainGate(Time.realtimeSinceStartup);   // 排空闸门起表（保险丝默认 5/900）
+            Log($"R{_session.Round} 开始播放（速率旋钮随时可切；投完进排空，画面收尾才开闸结算）");
         }
 
         private void OnPlaybackFinished()
         {
+            // 4E：Finished=闸门条件①信号（投完含终局条），不再直连结算——
+            // 结算只从开闸进（结算隔离），排空期等画面收尾由 Update 里的闸门评估推进
+            Log("时间轴投完——进入排空期（等特效寿终/收招定格/倒地播完）");
+        }
+
+        // ─────────────────────── 排空闸门（批次4E，#23⑧） ───────────────────────
+
+        private void Update()
+        {
+            if (_gate == null) return;
+            float t = _player.Time;
+            var counts = new DrainCounts
+            {
+                BusyActors = _view.BusyActionCountAt(t),
+                AliveEffects = _view.ActiveEffectCount,
+                AliveFloats = _view.ActiveFloatCount,
+                PendingVisualFires = _view.PendingVisualFireCount,
+                InFlightProjectiles = _view.InFlightCount,
+                PendingDeaths = _view.PendingDeathCountAt(t),
+            };
+            DrainGateResult result = _gate.Evaluate(Time.realtimeSinceStartup, t, _player.IsFinished, counts);
+            if (result == DrainGateResult.Waiting) return;
+            _gate = null;
+            OpenGate(result);
+        }
+
+        /// <summary>开闸（4E 唯一结算入口——结算隔离）。正常开闸不冻结画面：备战期
+        /// 待机呼吸继续、残余让格淡出按 playhead 自然走完。保险丝一分级处置：
+        /// 排空超时=结算放行不冻结（常见根因是超长特效寿命=4F 时长打磨项——时钟继续走、
+        /// 残余画面按 playhead 自清）；播放绝对熔断=真 bug 场景，冻结画面停钟停派发
+        /// 并大声点名（下一场 Play 重建游标自动恢复）。</summary>
+        private void OpenGate(DrainGateResult reason)
+        {
+            _gateReason = reason.ToString();
+            if (reason == DrainGateResult.OpenAbsoluteTimeout)
+            {
+                Log("【保险丝】OpenAbsoluteTimeout —— 播放绝对熔断（900 墙钟秒），强制开闸并冻结画面（真 bug 才会到这）");
+                _player.Rate = 0f;   // 先停粒子（视图随速率变化走 SyncRate 暂停）
+                _player.Stop();     // 停钟停派发——画面停在当前姿势
+            }
+            else if (reason == DrainGateResult.OpenDrainTimeout)
+            {
+                Log("【保险丝】OpenDrainTimeout —— 排空 5 表演秒未收尾，开闸放行结算"
+                    + "（常见根因=超长特效寿命，归 4F 时长打磨；残余画面按 playhead 自清）");
+            }
             SettleAfterPlayback();
         }
 
-        /// <summary>4E 正式闸门接入前的调试口径：播放完成即开闸结算。</summary>
+        /// <summary>开闸后的结算步（4E：只由 OpenGate 调）。预演早已跑完整场（Combat.IsOver
+        /// 恒真），此处即排空闸门回调：SettleBattle 归还战斗总线、结算入账、进备战/终局；
+        /// 随后释放预演产物（#23② 播完即释放——流与快照容量留给下一场）。</summary>
         private void SettleAfterPlayback()
         {
             if (_session != null && _session.Phase == GamePhase.Battle && _session.Combat.IsOver)
@@ -271,7 +334,7 @@ namespace AutoChess.Presentation
                 _lastWon = _session.Combat.PlayerWon;
                 bool ok = _session.SettleBattle();
                 Log(ok
-                    ? $"R{_session.Round} 结算完成：{(_lastWon ? "胜" : "败")} → {_session.Phase}"
+                    ? $"R{_session.Round} 结算完成（{_gateReason}）：{(_lastWon ? "胜" : "败")} → {_session.Phase}"
                     : "结算被拒");
                 if (_session.RunOver) Log("对局终局——点「重开一局」换种子再来");
             }
@@ -345,8 +408,8 @@ namespace AutoChess.Presentation
 
         private void OnGUI()
         {
-            var panel = new Rect(12f, 12f, 372f, 344f);
-            GUI.Box(panel, "自走棋 · 战台调试（批次4D）");
+            var panel = new Rect(12f, 12f, 372f, 366f);
+            GUI.Box(panel, "自走棋 · 战台调试（批次4E）");
 
             float y = panel.y + 26f;
             if (_session == null)
@@ -402,6 +465,8 @@ namespace AutoChess.Presentation
             y += 22f;
             GUI.Label(new Rect(panel.x + 16f, y, 340f, 22f),
                 $"弹体 {_view.ProjectileSpawnCount}（在途 {_view.InFlightCount}）· 特效 {_view.EffectSpawnCount}");
+            y += 22f;
+            GUI.Label(new Rect(panel.x + 16f, y, 340f, 22f), GateStatusLine());
             y += 26f;
 
             // 日志尾
@@ -416,12 +481,27 @@ namespace AutoChess.Presentation
             }
         }
 
+        /// <summary>闸门状态行（面板观察口：关=播放/排空中，开=已结算，闲=未开战）。</summary>
+        private string GateStatusLine()
+        {
+            if (_gate == null)
+                return string.IsNullOrEmpty(_gateReason) ? "闸门：闲（未开战）" : $"闸门：开（{_gateReason}）";
+            if (!_player.IsFinished)
+                return "闸门：关 · 播放中（事件流未投完）";
+            float t = _player.Time;
+            return $"闸门：关 · 排空中 · 动作{_view.BusyActionCountAt(t)} 特效{_view.ActiveEffectCount} " +
+                   $"飘字{_view.ActiveFloatCount} 待发{_view.PendingVisualFireCount} 在途弹{_view.InFlightCount} 倒地{_view.PendingDeathCountAt(t)}";
+        }
+
         private void DrawRateButton(float x, float y, string label, float rate)
         {
             bool active = Mathf.Approximately(_player.Rate, rate);
             GUI.enabled = !active;
             if (GUI.Button(new Rect(x, y, 72f, 26f), active ? $"[{label}]" : label))
+            {
                 _player.Rate = rate;
+                _desiredRate = rate;   // 4E：倍速偏好跨场记忆
+            }
             GUI.enabled = true;
         }
 

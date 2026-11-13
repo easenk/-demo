@@ -13,6 +13,8 @@ namespace AutoChess.Presentation
     /// 预排（出弹/爆炸/短爆到点即播），受击者的震荡波与通用命中反馈走节点派发时路由
     /// （施法块受害者由「出手后未终结」账本配对）。特效粒子按速率旋钮驱驰（simulationSpeed
     /// 同步 + 暂停即冻结），寿命按 playhead 域释放——与倍速/暂停语义天然一致。
+    /// 【4E】本类同时是排空闸门的画面侧读数源（动作在途/存活特效/在空飘字/未发火条目/在途弹/
+    /// 倒地未完六计数）——BattleRoot 每帧收集喂 BattleDrainGate，画面彻底静默才开闸结算。
     /// 视觉键撮合不在本类（流与快照只带单位 id）——BattleRoot 开战时按
     /// 「PlayerBoard 查 CharId + EnemyRoster[i]↔编成表 Spawns[i] 顺序契约」算好喂进来。
     /// </summary>
@@ -57,6 +59,34 @@ namespace AutoChess.Presentation
         /// <summary>调试观察口（4D）：本场弹体/特效累计发火数（验收口径）。</summary>
         public int ProjectileSpawnCount { get; private set; }
         public int EffectSpawnCount { get; private set; }
+
+        // ── 排空闸门读数（批次4E，BattleDrainGate 每帧收集）──
+        /// <summary>条件②：动作在途的演员数（移动补间/攻击窗+收招定格未走完）。</summary>
+        public int BusyActionCountAt(float t)
+        {
+            int n = 0;
+            for (int i = 0; i < _list.Count; i++)
+                if (_list[i].IsActionBusyAt(t)) n++;
+            return n;
+        }
+
+        /// <summary>条件④：倒地动画未播完的演员数。</summary>
+        public int PendingDeathCountAt(float t)
+        {
+            int n = 0;
+            for (int i = 0; i < _list.Count; i++)
+                if (_list[i].IsDeathPendingAt(t)) n++;
+            return n;
+        }
+
+        /// <summary>条件②：存活特效数（playhead 域寿命未走完——含 Makespan 后寿终的晚生特效）。</summary>
+        public int ActiveEffectCount => _effects.Count;
+
+        /// <summary>条件②：在空飘字数（0.9 秒上飘淡出未走完）。</summary>
+        public int ActiveFloatCount => _floats.Count;
+
+        /// <summary>条件②：已排定但未发火的演出条目数（FireAt 尚未到点——闸门等它出生）。</summary>
+        public int PendingVisualFireCount => _plan.Count - _planCursor;
 
         /// <summary>绑定播放器、立牌材质与特效预制体模板（全部由 BattleRoot 从 YooAsset 加载注入——
         /// 视图不碰资产加载）。effectTemplates = 路径 → 预制体；缺路径=BattleRoot 已打日志，本视图跳过该演出。</summary>

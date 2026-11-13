@@ -16,7 +16,9 @@ namespace AutoChess.Tests
     ///    （Move/Attack/Cast）被丢弃不派发；交付节点（伤害/让格/终局）不受封口照常兑现；
     ///    倒地前的动作保留（死亡打断的是"之后"的迟到动作）；
     ///  · 终局：全部派发且 playhead ≥ Makespan 才终；空时间轴构造即终、推进零派发零异常；
-    ///    Makespan 同刻的尾节点（终局条）恰好派发。
+    ///    Makespan 同刻的尾节点（终局条）恰好派发；
+    ///  · 排空域（批次4E）：终局后时钟不冻结、继续按速率推进（晚生特效/收招定格按 playhead
+    ///    自尽，闸门读画面计数收尾），派发恒零、终局判定不回退；倍速照吃、暂停即冻结。
     ///
     /// 合成时间轴经 InternalsVisibleTo 直构（4B1 同款入口——违规场景手写时间轴，
     /// 那正是"构造上不可能"要证明的东西）。
@@ -86,6 +88,37 @@ namespace AutoChess.Tests
             Assert.AreEqual(PlannedNodeKind.Damage, sink.Got[0].Kind);
             Assert.AreEqual(PlannedNodeKind.BattleEnd, sink.Got[1].Kind, "同刻按 Seq 分先后");
             Assert.IsTrue(cursor.IsFinished);
+        }
+
+        // ─────────────────────── 排空域（批次4E：终局后时钟不冻结） ───────────────────────
+
+        [Test]
+        public void Cursor_AfterFinished_ClockKeepsAdvancing_NoDispatch()
+        {
+            // 4E 排空域：晚生特效寿命/收招定格/让格淡出全按 playhead 到点自尽——
+            // 终局后 Advance 继续走钟、派发恒零（可派发的早已派完）、终局判定保持
+            var cursor = new TimelineCursor(Build(N(PlannedNodeKind.Move, 1f, 1, duration: 4f)));
+            cursor.Advance(5f, null);                        // playhead 5 = Makespan → 终局
+            Assert.IsTrue(cursor.IsFinished);
+            int dispatched = cursor.Advance(2f, n => Assert.Fail("终局后不应再派发"));
+            Assert.AreEqual(0, dispatched);
+            Assert.AreEqual(7f, cursor.Time, "时钟继续走（排空域）");
+            Assert.IsTrue(cursor.IsFinished, "终局判定不回退");
+        }
+
+        [Test]
+        public void Cursor_AfterFinished_RateDialStillApplies()
+        {
+            // 排空域照吃速率旋钮：二倍速推进排空尾巴、暂停（速率 0）即排空冻结——
+            // 闸门按 playhead 判排空超时，暂停因此永不误伤（DrainGateTests 侧锁语义）
+            var cursor = new TimelineCursor(Build(N(PlannedNodeKind.Move, 1f, 1, duration: 4f)));
+            cursor.Advance(5f, null);
+            cursor.Rate = 2f;
+            cursor.Advance(1f, null);
+            Assert.AreEqual(7f, cursor.Time, "二倍速：1s 真实 = 2s 表演（排空域同刻度）");
+            cursor.Rate = 0f;
+            cursor.Advance(3f, null);
+            Assert.AreEqual(7f, cursor.Time, "暂停冻结——排空随之冻结");
         }
 
         // ─────────────────────── 派发序与边界 ───────────────────────

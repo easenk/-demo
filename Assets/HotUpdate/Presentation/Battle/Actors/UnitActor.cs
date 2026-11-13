@@ -223,6 +223,15 @@ namespace AutoChess.Presentation
         public void SetMana(int mana) => Mana = mana;
         public void MarkRemovable(float at) { _removable = true; _removeAt = at; }
 
+        /// <summary>动作是否在途（4E 排空闸门条件②读数）：移动补间未走完 / 攻击窗+收招定格未走完。</summary>
+        public bool IsActionBusyAt(float t)
+            => (_moving && t < _moveStart + _moveDur)
+               || (_act == Act.Attack && t < _actStart + _atkDur + _atkHold);
+
+        /// <summary>倒地动画是否未播完（4E 排空闸门条件④读数；演完=末帧永驻，不算在途）。</summary>
+        public bool IsDeathPendingAt(float t)
+            => _act == Act.Death && t < _actStart + _deathDur;
+
         public void FlashDamageColor(float t) => Flash(FlashDamage, t, 0.25f);
         public void FlashHealColor(float t) => Flash(FlashHeal, t, 0.25f);
 
