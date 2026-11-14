@@ -16,6 +16,7 @@ namespace AutoChess.Presentation
         public float AttackHitPercent;               // 命中帧的窗内百分比
         public float DeathDuration;                  // 尾部窗时长
         public float MoveDuration;                   // 一格移动补间
+        public float OffsetX, OffsetY, OffsetZ;        // 相对格心偏移（4F 用户战台校准：含飞行悬浮与脚底贴格感——身体位置=格心+偏移）
         public float Scale;                          // 最终世界缩放（BaseHeight/素材身高×体型倍率）
         public float FeetOffset;                     // 脚底对齐偏移（scale=1 世界单位）
         public float BodyHeight;                     // 素材原始身高（scale=1 世界单位）
@@ -51,6 +52,7 @@ namespace AutoChess.Presentation
                 AttackHitPercent = aw.HitPercent,
                 DeathDuration = dw.Duration,
                 MoveDuration = def.MoveDuration,
+                OffsetX = def.OffsetX, OffsetY = def.OffsetY, OffsetZ = def.OffsetZ,
                 Scale = UnitActorConfig.BaseHeight / Mathf.Max(set.BodyHeight, 0.01f) * def.SizeMultiplier,
                 FeetOffset = set.FeetOffset,
                 BodyHeight = set.BodyHeight,
@@ -97,6 +99,8 @@ namespace AutoChess.Presentation
         private float _idleFps, _walkFps, _atkFps, _deathFps;
         private float _atkDur, _deathDur, _atkHold;   // _atkHold：收招定格到回待机的缓冲
         private float _scale, _feet;
+        private Vector3 _groundOffset;              // 相对格心偏移（4F 用户校准——含悬浮/脚底贴格感）
+        private float _bodyHeight;          // 素材原始身高（scale=1 世界单位——弹体出弹高度口径）
         private bool _srcFacesRight;
 
         // ── 状态（全部随 playhead 推进） ──
@@ -117,6 +121,7 @@ namespace AutoChess.Presentation
         private float _actStart;
         private int _lastFrame = -1;
 
+        private Vector3 _bodyUp = Vector3.up;   // 身体"上方"的世界方向（4F 后仰公告板=相机 up；与地面夹角 90° - 相机俯角）
         private Vector3 _basePos;
         private bool _moving;
         private Vector3 _moveFrom, _moveTo;
@@ -138,30 +143,38 @@ namespace AutoChess.Presentation
             _idleF = v.Idle; _walkF = v.Walk; _atkF = v.Attack; _deathF = v.Death;
             _idleFps = v.IdleFps; _walkFps = v.WalkFps; _atkFps = v.AttackFps; _deathFps = v.DeathFps;
             _atkDur = v.AttackDuration; _deathDur = v.DeathDuration; _atkHold = 0.2f;
-            _scale = v.Scale; _feet = v.FeetOffset * v.Scale; _srcFacesRight = v.SourceFacesRight;
+            _scale = v.Scale; _feet = v.FeetOffset * v.Scale; _bodyHeight = v.BodyHeight; _srcFacesRight = v.SourceFacesRight;
+            _groundOffset = new Vector3(v.OffsetX, v.OffsetY, v.OffsetZ);   // 4F 用户校准的相对格心偏移（所见即所得）
             _faceRight = playerSide;   // 默认面向敌方半场：玩家在左朝右、敌在右朝左
             _basePos = cellWorld;
 
             // ── 骨架拼装 ──
             _root = pool.Get($"Unit_{unitId}");
             _tr = _root.transform;
-            _tr.position = cellWorld;
+            _tr.position = cellWorld;   // root 恒在格心——身体偏移（含悬浮）全部由 GroundOffset 表达
             _tr.localScale = Vector3.one;
             _tr.rotation = Quaternion.identity;
 
             _shadow = MakeSprite(_root.transform, "Shadow", white, bodyMat, 1);
             _shadow.color = new Color(0f, 0f, 0f, 0.35f);
-            _shadow.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            _shadow.transform.localPosition = new Vector3(0f, 0.02f, 0f);   // 假影恒贴格面（root 不悬浮）
             _shadow.transform.localScale = new Vector3(0.55f * _scale, 0.16f, 1f);
 
+            // 4F 后仰公告板：身体立牌对齐相机平面（像素无透视压缩——HD-2D 观感正主）。
+            // 相机固定机位 → 生成时一次性对齐；位置=用户战台校准的相对格心偏移（2026-11-14 拍板
+            // 取代脚底补偿公式——逐单位所见即所得，含飞行悬浮与脚底贴格感）。
+            _bodyUp = cameraRotation * Vector3.up;
             _body = MakeSprite(_root.transform, "Body", null, bodyMat, 2);
-            _body.transform.localPosition = new Vector3(0f, _feet, 0f);
+            _body.transform.localPosition = _groundOffset;
             _body.transform.localScale = new Vector3(_scale, _scale, 1f);
+            _body.transform.rotation = cameraRotation;
 
-            // 血蓝条（对齐相机的公告板；战台相机固定——spawn 时一次性对齐即可）
+            // 血蓝条（对齐相机的公告板；战台相机固定——spawn 时一次性对齐即可；
+            // 4F：锚点=身体偏移 + 沿身体 up 的头顶距离——跟随悬浮/校准偏移）
             var barsGo = new GameObject("Bars");
             barsGo.transform.SetParent(_tr, false);
-            barsGo.transform.localPosition = new Vector3(0f, v.BodyHeight * _scale + 0.12f, 0f);
+            float headH = v.BodyHeight * _scale + 0.12f;
+            barsGo.transform.localPosition = _groundOffset + new Vector3(0f, headH * _bodyUp.y, headH * _bodyUp.z);
             barsGo.transform.rotation = cameraRotation;
             _bars = barsGo.transform;
 
@@ -235,7 +248,11 @@ namespace AutoChess.Presentation
         public void FlashDamageColor(float t) => Flash(FlashDamage, t, 0.25f);
         public void FlashHealColor(float t) => Flash(FlashHeal, t, 0.25f);
 
-        public Vector3 HeadWorld => _tr.position + new Vector3(0f, _feet + 1.0f * _scale, 0f);
+        public Vector3 HeadWorld => _body.transform.position + _bodyUp * (_feet + 1.0f * _scale);   // 4F：从身体实际位置出发（含校准偏移/悬浮）沿身体 up 到头顶
+
+        /// <summary>弹体出弹/落点高度（世界单位）= 施放者胸口（身高×0.55）——4F 可配置化口径：
+        /// 取代旧常量 0.7（体型基准上调后胸口随体型走，所有单位普适；出弹/落点同高=水平直线飞行）。</summary>
+        public float MissileHeight => _bodyHeight * _scale * 0.55f;
         public Vector3 Position => _tr.position;
 
         // ─────────────────────── 每帧姿势（按 playhead 参数化） ───────────────────────
@@ -275,7 +292,7 @@ namespace AutoChess.Presentation
                     if (_act == Act.Walk) SetAct(Act.Idle, _idleF, _idleFps, true, t);
                 }
             }
-            _tr.position = pos;
+            _tr.position = pos;   // root 恒在格心（移动补间）；身体偏移由 Body 的 localPosition（校准值）天然保持
 
             // 3) 朝向（flipX 在身体上翻——血条公告板与假影不受镜像影响）
             _body.flipX = _faceRight != _srcFacesRight;

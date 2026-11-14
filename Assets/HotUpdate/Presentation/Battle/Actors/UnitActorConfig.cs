@@ -46,6 +46,11 @@ namespace AutoChess.Presentation
         /// <summary>死亡窗上限（秒）——超长死亡动画取尾部窗保住倒地末帧，1.2 是让格节奏的默认上限。</summary>
         public float DeathMaxDuration = 1.2f;
 
+        /// <summary>相对格心偏移（世界单位，2026-11-14 用户战台左下角格亲手校准）：单位放到任何格子，
+        /// 身体位置 = 该格中心 + 本偏移——所见即所得（飞行悬浮的 y 抬升与脚底贴格微调全在此，x/z 为水平修正；
+        /// 取代旧脚底补偿公式与 FlyHeight 字段）。</summary>
+        public float OffsetX, OffsetY, OffsetZ;
+
         /// <summary>一格移动补间时长（秒，战斗走位恒 1 格；#23⑥ 移动补间归本契约）。</summary>
         public float MoveDuration = 0.30f;
     }
@@ -63,8 +68,10 @@ namespace AutoChess.Presentation
         /// <summary>怪种视觉键基数（角色键 1~18 与之不相交）。</summary>
         public const int EnemyKeyBase = 1000;
 
-        /// <summary>体型归一基准（世界单位）：格距 2 的战台上单位的目标身高（再乘费档/怪种倍率）。</summary>
-        public const float BaseHeight = 1.45f;
+        /// <summary>体型归一基准（世界单位）：格距 2 的战台上单位的目标身高（再乘费档/怪种倍率）。
+        /// 2026-11-14 用户观感"太小"两轮上调：1.45 → 1.75 → 2.0（身高≈格宽=自走棋主流视觉锚点；
+        /// 低费角色 1.7 米、5费 2.5、Boss 3 米）——真台观感定稿由用户拍板。</summary>
+        public const float BaseHeight = 2.0f;
 
         private static readonly Dictionary<int, UnitVisualDef> Defs = BuildDefs();
 
@@ -169,43 +176,65 @@ namespace AutoChess.Presentation
             var map = new Dictionary<int, UnitVisualDef>(30);
 
             // 角色：roleN ↔ 文件夹 N-1 ↔ CharId N（2026-11-06 拍板 0 基映射）。
-            // 体型倍率按费档梯度（1费 0.85 → 5费 1.25）；素材抽查朝左 → SourceFacesRight=false。
-            float[] roleSize = { 0f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.95f, 0.95f, 0.95f, 0.95f, 0.95f,
-                                 1.05f, 1.05f, 1.05f, 1.15f, 1.15f, 1.15f, 1.25f, 1.25f };
-            for (int charId = 1; charId <= 18; charId++)
+            // 体型倍率与相对格心偏移（2026-11-14 用户战台亲手校准定稿：第一轮统一拖 3 后第二轮微调
+            // ——N02=4/N03=4.5/N14=3.5/N16=4、怪组 E01/02/06/07/08=4/E04=2.7/E05=5/E09=2/E10/E11=5；
+            // 偏移=用户把各单位逐个挪到左下角格对准后的"相对格心偏移"读回值，所见即所得；
+            // 倍率=用户值×素材身高/2.0 换算）。素材本体朝右（2026-11-14 真台实测翻正）。
+            void Role(int charId, float size, float ox, float oy, float oz)
             {
                 map[charId] = new UnitVisualDef
                 {
                     ClipSetPath = $"Assets/Res/Art/UnitActorClips/Role_{charId}",
-                    SizeMultiplier = roleSize[charId],
-                    SourceFacesRight = false,   // 角色组素材抽查=朝左（真台录像逐个核对修正）
+                    SizeMultiplier = size,
+                    SourceFacesRight = true,    // 角色组素材本体朝右（2026-11-14 真台实测）
+                    OffsetX = ox, OffsetY = oy, OffsetZ = oz,
                 };
             }
+            Role(1, 1.215f, 0f, -0.256f, -0.300f);
+            Role(2, 2.02f, 0f, -0.340f, -0.598f);
+            Role(3, 2.2725f, 0f, -0.295f, -0.542f);
+            Role(4, 1.965f, 0.233f, 0.023f, -0.542f);     // 飞行（用户点名）
+            Role(5, 1.215f, 0f, -0.202f, -0.542f);
+            Role(6, 1.215f, 0.140f, -0.040f, -0.542f);    // 飞行
+            Role(7, 1.215f, 0f, -0.286f, -0.542f);
+            Role(8, 1.515f, 0f, -0.248f, -0.542f);        // 飞行
+            Role(9, 1.215f, 0f, -0.204f, -0.542f);
+            Role(10, 1.515f, 0f, -0.223f, -0.542f);       // 飞行
+            Role(11, 2.115f, 0f, -0.097f, -0.542f);
+            Role(12, 2.115f, 0f, -0.174f, -0.542f);
+            Role(13, 1.515f, 0f, -0.137f, -0.542f);
+            Role(14, 2.1175f, 0f, -0.158f, -0.542f);
+            Role(15, 1.215f, 0f, -0.244f, -0.542f);
+            Role(16, 1.62f, 0f, 0.005f, -0.542f);         // 飞行
+            Role(17, 1.965f, 0f, -0.187f, -0.542f);
+            Role(18, 1.815f, 0f, -0.210f, -0.542f);
 
-            // 怪物：文件夹号 ↔ 枚举-1；体型倍率：杂兵 0.75~1.0、大怪 1.1~1.15、精英 1.3、Boss 1.5；
-            // 素材抽查朝右 → SourceFacesRight=true。
-            void Enemy(EnemyVisualId id, float size)
+            // 怪物素材本体朝向（2026-11-14 核对合影+真台二次翻正——合影模拟玩家侧、flipX=!src，
+            // 怪组在合影中未翻面=显示即本体朝向）：八怪本体朝左（野狼/石像傀儡/幼龙/魔眼妖/
+            // 刺毛虫/幽灵/石像巨人/兽人酋长）=false；四怪本体朝右（宝箱怪/食人魔/亡灵领主/
+            // 深渊魔王）=true——首次翻正误把合影当翻转结果反推，十二怪全部背对玩家，用户抓回。
+            void Enemy(EnemyVisualId id, float size, float ox, float oy, float oz, bool facesRight)
             {
                 map[EnemyKeyBase + (int)id] = new UnitVisualDef
                 {
                     ClipSetPath = $"Assets/Res/Art/UnitActorClips/Enemy_{(int)id - 1}",
                     SizeMultiplier = size,
-                    SourceFacesRight = true,    // 怪物组素材抽查=朝右
+                    SourceFacesRight = facesRight,
+                    OffsetX = ox, OffsetY = oy, OffsetZ = oz,
                 };
             }
-
-            Enemy(EnemyVisualId.TreasureMimic, 0.95f);
-            Enemy(EnemyVisualId.Wolf, 0.90f);
-            Enemy(EnemyVisualId.GolemPuppet, 1.00f);
-            Enemy(EnemyVisualId.Whelp, 1.00f);
-            Enemy(EnemyVisualId.EvilEye, 1.00f);
-            Enemy(EnemyVisualId.SpineWorm, 0.75f);
-            Enemy(EnemyVisualId.Ghost, 1.00f);
-            Enemy(EnemyVisualId.StoneGiant, 1.15f);
-            Enemy(EnemyVisualId.Ogre, 1.10f);
-            Enemy(EnemyVisualId.Chieftain, 1.30f);
-            Enemy(EnemyVisualId.UndeadLord, 1.30f);
-            Enemy(EnemyVisualId.AbyssLord, 1.50f);
+            Enemy(EnemyVisualId.TreasureMimic, 1.68f, 0f, 0.560f, -0.016f, true);
+            Enemy(EnemyVisualId.Wolf, 2.00f, 0f, 0.358f, -0.001f, false);
+            Enemy(EnemyVisualId.GolemPuppet, 1.48f, 0f, 0.511f, 0.124f, false);
+            Enemy(EnemyVisualId.Whelp, 1.92f, 0f, 0.511f, 0.124f, false);          // 飞行（用户点名）
+            Enemy(EnemyVisualId.EvilEye, 2.295f, 0f, 1.432f, 0.506f, false);       // 飞行
+            Enemy(EnemyVisualId.SpineWorm, 2.50f, 0f, 0.364f, 0.042f, false);
+            Enemy(EnemyVisualId.Ghost, 1.92f, 0.199f, 0.511f, -0.043f, false);      // 飞行
+            Enemy(EnemyVisualId.StoneGiant, 2.56f, 0f, 0.511f, -0.006f, false);
+            Enemy(EnemyVisualId.Ogre, 1.92f, -0.103f, 0.604f, 0.172f, true);
+            Enemy(EnemyVisualId.Chieftain, 2.00f, 0f, 0.786f, 0.124f, false);
+            Enemy(EnemyVisualId.UndeadLord, 2.525f, 0f, -0.352f, -0.539f, true);
+            Enemy(EnemyVisualId.AbyssLord, 3.025f, 0f, -0.337f, -0.524f, true);
 
             return map;
         }

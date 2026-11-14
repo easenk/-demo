@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;   // 4F 起仅取 Color 值类型（分色映射）——仍是纯数据映射，EditMode 直测不受影响
 
 namespace AutoChess.Presentation
 {
@@ -90,6 +91,28 @@ namespace AutoChess.Presentation
                 case 10: return GoldOrb;                      // 随军牧师（圣光弹）
                 case 4: case 16: return LightningOrb;         // 巫术学徒/宫廷大法师：共款，4F 换小
                 default: return null;
+            }
+        }
+
+        /// <summary>普攻弹体体型倍率（4F）：闪电黑洞偏大（4D 真台挂账）→ 普攻档缩小 0.65；
+        /// 技能档（13=1.0 / 16=1.8）是"大招弹"气势位，不走本表、保持原值。</summary>
+        public static float ProjectileScaleForChar(int charId)
+            => charId == 4 || charId == 16 ? 0.65f : 1f;
+
+        /// <summary>普攻弹体分色（4F）：共款弹体按棋子给色（Color.black=不染色，用原模板）。
+        /// 颜色由素材粒子的 startColor 携带（材质全白无 _TintColor——2026-11-14 侦查实锤），
+        /// 染色=克隆变体模板时乘入 startColor，素材本体与共享材质不动。</summary>
+        public static Color ProjectileTintForChar(int charId)
+        {
+            switch (charId)
+            {
+                case 2: return Color.black;              // 投矛手：三叉戟本色（紫）
+                case 9: return new Color(0.35f, 0.75f, 1f);   // 弓卫：青蓝箭
+                case 12: return new Color(1f, 0.85f, 0.3f);   // 神射：金箭
+                case 5: return Color.black;              // 魔弹射手：红焰本色
+                case 13: return new Color(1f, 0.5f, 0.1f);   // 战地法师：橙焰
+                case 16: return Color.black;             // 大法师：闪电本色（普攻已缩 0.65 与学徒区分）
+                default: return Color.black;
             }
         }
 

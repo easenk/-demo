@@ -38,7 +38,7 @@ namespace AutoChess.Presentation
         private readonly List<ActiveProjectile> _projectiles = new List<ActiveProjectile>(16);                         // 在途弹（4E 排空闸门的数据口）
         private readonly List<ActiveEffect> _effects = new List<ActiveEffect>(24);
         private float _lastRate = 1f;
-        private const float ProjectileHeight = 0.7f;                              // 弹道离地高度（v1 常量，4F 调）
+        private const float CasterYawBias = 0f;   // 4F：挥砍素材默认挥向相对 +z 的偏移角（整场录像核对后定）
 
         private GameObjectPool _rigPool;
         private GameObjectPool _textPool;
@@ -366,15 +366,17 @@ namespace AutoChess.Presentation
                 {
                     if (!TryGet(item.UnitId, out UnitActor from) || !TryGet(item.TargetId, out UnitActor to))
                         return;   // 撮合缺位的防御：无起点或无目标=不出弹（BattleRoot 已点名日志）
-                    GameObject go = SpawnFromPool(item.Path, rate);
+                    string key = PoolKey(item.Path, item.Tint);
+                    GameObject go = SpawnFromPool(key, item.Path, item.Tint, rate);
                     if (go == null) return;
-                    Vector3 a = from.Position + new Vector3(0f, ProjectileHeight, 0f);
-                    Vector3 b = to.Position + new Vector3(0f, ProjectileHeight, 0f);
+                    float h = from.MissileHeight;   // 4F：出弹/落点同高=水平直线（随体型走，取代旧常量 0.7）
+                    Vector3 a = from.Position + new Vector3(0f, h, 0f);
+                    Vector3 b = to.Position + new Vector3(0f, h, 0f);
                     go.transform.position = a;
                     go.transform.localScale = Vector3.one * item.Scale;
                     _projectiles.Add(new ActiveProjectile
                     {
-                        Go = go, Path = item.Path, From = a, To = b,
+                        Go = go, Path = key, From = a, To = b,
                         LaunchAt = item.FireAt, ArriveAt = item.ArriveAt,
                     });
                     ProjectileSpawnCount++;
@@ -383,7 +385,12 @@ namespace AutoChess.Presentation
                 case PlannedVisualKind.Effect:
                 {
                     if (!TryGet(item.UnitId, out UnitActor anchor)) return;
-                    SpawnEffectAt(item.Path, anchor.Position, item.Yaw, t, rate);
+                    // 4F：施法者特效（挥砍/斩击）自动朝向主目标——配置 Yaw（十字纵刀 90°）优先，0=未配置走自动
+                    float yaw = item.Yaw;
+                    if (Mathf.Approximately(yaw, 0f) && item.TargetId != 0 && TryGet(item.TargetId, out UnitActor tgt))
+                        yaw = CasterYawBias + Mathf.Atan2(tgt.Position.x - anchor.Position.x,
+                            tgt.Position.z - anchor.Position.z) * Mathf.Rad2Deg;
+                    SpawnEffectAt(item.Path, anchor.Position, yaw, t, rate);
                     break;
                 }
                 case PlannedVisualKind.AllAlliesEffect:
@@ -422,7 +429,7 @@ namespace AutoChess.Presentation
 
         private void SpawnEffectAt(string path, Vector3 world, float yaw, float t, float rate)
         {
-            GameObject go = SpawnFromPool(path, rate);
+            GameObject go = SpawnFromPool(path, path, Color.black, rate);
             if (go == null) return;
             go.transform.position = world;
             go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
@@ -434,19 +441,77 @@ namespace AutoChess.Presentation
             EffectSpawnCount++;
         }
 
-        /// <summary>出池（含粒子重播与速率应用）；模板缺失（BattleRoot 已打日志）返回 null。</summary>
-        private GameObject SpawnFromPool(string path, float rate)
+        /// <summary>出池（含粒子重播与速率应用）。key=池键（分色变体各建一池）；模板缺失（BattleRoot 已打日志）返回 null。</summary>
+        private GameObject SpawnFromPool(string key, string path, Color tint, float rate)
         {
             if (string.IsNullOrEmpty(path) || !_effectTemplates.TryGetValue(path, out GameObject template))
                 return null;
-            if (!_pools.TryGetValue(path, out PrefabPool pool))
+            if (!_pools.TryGetValue(key, out PrefabPool pool))
             {
-                pool = new PrefabPool(template, template.name);
-                _pools[path] = pool;
+                // 4F 共款分色：有色 tint 用染过粒子启动色的克隆变体做池模板；黑色=原模板直用
+                GameObject proto = IsTinted(tint) ? CreateTintedVariant(template, tint) : template;
+                pool = new PrefabPool(proto, key);
+                _pools[key] = pool;
             }
             GameObject go = pool.Get();
             RestartPlayback(go, rate);
             return go;
+        }
+
+        /// <summary>池键：黑色 tint（含默认值 rgb 全 0）= 素材路径原样；有色分色 = 路径|rgb 后缀。</summary>
+        private static string PoolKey(string path, Color tint)
+            => IsTinted(tint) ? $"{path}|{tint.r:F2},{tint.g:F2},{tint.b:F2}" : path;
+
+        private static bool IsTinted(Color c) => c.r > 0f || c.g > 0f || c.b > 0f;
+
+        /// <summary>分色变体（4F）：克隆模板并把每个粒子系统的启动色乘入 tint——素材材质全白、
+        /// 颜色由粒子 startColor 携带（2026-11-14 侦查实锤）；变体随池场级存活，场景拆除连带销毁。</summary>
+        private static GameObject CreateTintedVariant(GameObject template, Color tint)
+        {
+            GameObject proto = Instantiate(template);
+            proto.name = template.name + "_Tint";
+            var systems = proto.GetComponentsInChildren<ParticleSystem>(true);
+            for (int i = 0; i < systems.Length; i++)
+            {
+                var ps = systems[i];
+                var main = ps.main;
+                var g = main.startColor;
+                switch (g.mode)
+                {
+                    case ParticleSystemGradientMode.Color:
+                        g.color = g.color * tint;
+                        break;
+                    case ParticleSystemGradientMode.Gradient:
+                        TintGradient(g.gradient, tint);
+                        break;
+                    case ParticleSystemGradientMode.TwoColors:
+                        g.colorMin = g.colorMin * tint;
+                        g.colorMax = g.colorMax * tint;
+                        break;
+                    case ParticleSystemGradientMode.TwoGradients:
+                        TintGradient(g.gradientMin, tint);
+                        TintGradient(g.gradientMax, tint);
+                        break;
+                    case ParticleSystemGradientMode.RandomColor:
+                        // 随机场模式：候选色放哪个字段因素材而异——梯度与双常量全染（null/无效字段天然短路）
+                        TintGradient(g.gradient, tint);
+                        TintGradient(g.gradientMin, tint);
+                        TintGradient(g.gradientMax, tint);
+                        g.colorMin = g.colorMin * tint;
+                        g.colorMax = g.colorMax * tint;
+                        break;
+                }
+                main.startColor = g;
+            }
+            return proto;
+        }
+
+        private static void TintGradient(Gradient grad, Color tint)
+        {
+            if (grad == null) return;
+            var keys = grad.colorKeys;
+            for (int i = 0; i < keys.Length; i++) keys[i].color = keys[i].color * tint;
+            grad.SetKeys(keys, grad.alphaKeys);
         }
 
         private void ReleaseToPool(string path, GameObject go)

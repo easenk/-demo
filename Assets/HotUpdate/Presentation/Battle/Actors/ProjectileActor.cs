@@ -79,7 +79,10 @@ namespace AutoChess.Presentation
                 float d = MaxOf(main.startDelay) + main.duration + MaxOf(main.startLifetime);
                 if (d > max) max = d;
             }
-            return Mathf.Min(max + 0.25f, 8f);   // 兜底：最长 8 秒必收池（观感上限归 4F 调）
+            // 4F（A 案拍板）：池寿命上限 4.5 表演秒——严守排空保险丝一（5 表演秒）并留 0.5 秒余量；
+            // 8 个超窗特效池（光环/震荡波/落地类 5.45~8.00s）尾巴由此截断，短特效不受影响。
+            // 素材本体不动（收集在池侧=可逆，超窗池的尾巴段本就该剪）。
+            return Mathf.Min(max + 0.25f, 4.5f);
         }
 
         /// <summary>MinMaxCurve 各模式取最大值（本版引擎无 EvaluateMax——按模式展开）。</summary>
@@ -141,10 +144,11 @@ namespace AutoChess.Presentation
         public float FireAt;
         public float ArriveAt;      // 仅 Projectile 消费；其余条目 = FireAt
         public int UnitId;
-        public int TargetId;
+        public int TargetId;        // Effect 条目=挥砍自动朝向的数据源（施法者特效挥向主目标）
         public string Path;
         public float Scale;
         public float Yaw;
+        public Color Tint;          // 4F 共款分色：黑色=不染（原模板）；其余=乘入克隆变体的粒子 startColor
     }
 
     /// <summary>
@@ -207,12 +211,15 @@ namespace AutoChess.Presentation
                             arriveAt = next.Start;
                     }
                     if (arriveAt < launchAt + MinFlight) arriveAt = launchAt + MinFlight;
+                    int atkChar = charIdByUnit != null && charIdByUnit.TryGetValue(n.UnitId, out int ac) ? ac : 0;
                     items.Add(new PlannedVisual
                     {
                         Kind = PlannedVisualKind.Projectile,
                         FireAt = launchAt, ArriveAt = arriveAt,
                         UnitId = n.UnitId, TargetId = n.TargetId,
-                        Path = path, Scale = 1f,
+                        Path = path,
+                        Scale = EffectVisualConfig.ProjectileScaleForChar(atkChar),   // 4F：黑洞偏大普攻缩 0.65
+                        Tint = EffectVisualConfig.ProjectileTintForChar(atkChar),     // 4F：共款分色
                     });
                 }
                 else if (n.Kind == PlannedNodeKind.Cast)
@@ -285,13 +292,13 @@ namespace AutoChess.Presentation
                         items.Add(new PlannedVisual
                         {
                             Kind = PlannedVisualKind.Effect, FireAt = launchAt,
-                            UnitId = n.UnitId, Path = v.CasterEffectPath,
+                            UnitId = n.UnitId, TargetId = n.TargetId, Path = v.CasterEffectPath,
                         });
                     if (!string.IsNullOrEmpty(v.CasterEffect2Path))
                         items.Add(new PlannedVisual
                         {
                             Kind = PlannedVisualKind.Effect, FireAt = launchAt,
-                            UnitId = n.UnitId, Path = v.CasterEffect2Path,
+                            UnitId = n.UnitId, TargetId = n.TargetId, Path = v.CasterEffect2Path,
                             Yaw = v.CasterEffect2Yaw,
                         });
                 }
