@@ -494,6 +494,27 @@ namespace AutoChess.Tests
             Assert.IsTrue(s2.HasPolicyChoice, "候选未消费");
         }
 
+        [Test]
+        public void PickPolicy_Equipment_BagFullPrecheck_PureReject()
+        {
+            // 4U1 拍板"背包上限定死 25"：装备条目预检扩容——满包 = 纯拒绝候选不消费（与缺表/表外 id 同款时机）
+            var bus = new EventBus();
+            var picked = new List<PolicyPickedEvent>();
+            bus.Subscribe<PolicyPickedEvent>(e => picked.Add(e));
+            var policies = new PolicyTable(new[] { Def(1, "散件", PolicyEffect.Gear(1)) });
+            var s = WinRewardAndOffer(bus, policies);
+
+            for (int i = 0; i < Inventory.Capacity; i++)
+                Assert.AreNotEqual(0, s.AddEquipment(1), "填满背包");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount);
+
+            Assert.IsFalse(s.PickPolicy(0), "背包满：预检纯拒绝");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount, "不偷塞");
+            Assert.IsTrue(s.HasPolicyChoice, "候选未消费（腾出背包后可选——门禁仍在）");
+            Assert.AreEqual(0, picked.Count, "无选定广播");
+            Assert.AreEqual(0, s.OwnedPolicyIds.Count, "未记已选");
+        }
+
         // ─────────────────────── 重算制挂载（2026-10-27 拍板"只有上战场的棋子才算"） ───────────────────────
 
         [Test]

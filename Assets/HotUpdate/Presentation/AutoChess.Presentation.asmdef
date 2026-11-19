@@ -3,7 +3,9 @@
     "rootNamespace": "AutoChess.Presentation",
     "references": [
         "AutoChess.Game",
-        "AutoChess.Runtime"
+        "AutoChess.Runtime",
+        "FairyGUI",
+        "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

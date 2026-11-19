@@ -15,6 +15,15 @@ namespace AutoChess.Presentation
                       $"棋盘={AutoChess.Game.GameConst.BoardWidth}x{AutoChess.Game.GameConst.BoardHeight} | " +
                       $"tick={AutoChess.Game.GameConst.TickSeconds}s");
 
+            // 批次4U0：FGUI 底座（面板管理器+事件桥+Stage）与场景流同期装配——
+            // Stage 自带 DontDestroyOnLoad，UI 穿过三段场景全程存活
+            UiRoot.Init();
+
+            // 批次4U1：真包加载首验——Package1 经 UiPackageLoader（YooAsset 生产路径，编辑器模拟与真机同一代码）
+            // 入货；包常驻会话（Stage 同款生存策略，场景切换不卸载）。真包加载漏了这步 =
+            // CreateObject 拿 null（DevStub 纯代码拼装暴露不了的坑，4U1 首个真面板实抓）。
+            UiPackageLoader.Load(UiCatalog.PackageLocation);
+
             // 三段场景流（P4-4）：Bootstrap 已卸任，驱动器接管后续两跳
             var flowGo = new GameObject("SceneFlow");
             Object.DontDestroyOnLoad(flowGo);   // Single 加载会卸掉 Bootstrap，驱动器必须跨场景存活

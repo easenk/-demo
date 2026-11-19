@@ -61,6 +61,7 @@ namespace AutoChess.Presentation
             {
                 DynamicGI.UpdateEnvironment();
                 _envProbedPath = path;
+                UiRoot.RefreshCameraStack();   // 4U0：Single 加载换了主相机——FGUI 的 Stage 相机重挂进新主相机渲染栈
                 Debug.Log($"[SceneFlow] 场景激活，环境光探针按本场景天空盒重算: {path}");
             }
 

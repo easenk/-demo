@@ -264,9 +264,10 @@ namespace AutoChess.Tests
             }
         }
 
-        /// <summary>普攻配对契约（e2e 口径）：Seq+1 必为配对伤害（源码序）；落点=出手预扣的命中帧
-        /// 与目标链尾的 max——真战多人围殴同目标时 I2 链把命中按序推后（#23 设计内行为），
-        /// 故断言区间 [命中帧, 挥击窗尾] 而非精确等于（合成流单案的精确断言归 PlannerTests）。</summary>
+        /// <summary>普攻配对契约（e2e 口径）：Seq+1 必为配对伤害（源码序）；落点=命中帧与
+        /// 目标链尾的 max——2026-11-18 预扣退役（出手贴逻辑，围殴扎堆时链尾可把命中推晚、
+        /// 允许越出挥击窗尾=迟到不倒置），断言收紧为"不早于命中帧"下限；
+        /// 合成流单案的精确断言归 PlannerTests。</summary>
         private static void CheckAttackPairing(PlannedTimeline tl, PlannerTimingTable timings)
         {
             var bySeq = new Dictionary<int, PlannedNode>();
@@ -281,9 +282,7 @@ namespace AutoChess.Tests
                 UnitTiming t = timings.Get(n.UnitId);
                 float offset = t.AttackDuration * t.AttackHitPercent;   // 运行时算术（浮点坑：禁常量折叠字面量）
                 Assert.GreaterOrEqual(dmg.Start, n.Start + offset - 1e-6f,
-                    $"普攻 Seq {n.Seq} 的命中早于命中帧（预扣构造破坏）");
-                Assert.LessOrEqual(dmg.Start, n.Start + n.Duration + 1e-6f,
-                    $"普攻 Seq {n.Seq} 的命中越出挥击窗（守约被破坏）");
+                    $"普攻 Seq {n.Seq} 的命中早于命中帧（交付钳制破坏）");
             }
         }
 
@@ -452,30 +451,59 @@ namespace AutoChess.Tests
             visuals[unitId] = UnitVisualResolver.Resolve(set, def, attackInterval, maxMana);
         }
 
-        /// <summary>真数据时刻表（BattleRoot.BuildTimingTable 同款：逐单位截窗时长、施法复用攻击窗）。</summary>
+        /// <summary>真数据时刻表（BattleRoot.BuildTimingTable 同款：施法独立短窗 C-1 + 攻隔钳制 C-2）。</summary>
         private static PlannerTimingTable BuildRealTable(BattlePreviewResult r,
             Dictionary<int, ResolvedUnitVisual> visuals)
         {
             var fallback = new UnitTiming
             {
                 AttackDuration = 0.45f, AttackHitPercent = 0.5f,
-                CastDuration = 0.60f, CastHitPercent = 0.5f,
+                CastDuration = UnitActorConfig.CastDuration, CastHitPercent = 0.5f,
                 MoveDuration = 0.30f, DeathDuration = 0.40f,
             };
             var table = new PlannerTimingTable(fallback);
             if (r.Snapshots == null || r.Snapshots.Count == 0) return table;
+
+            // C-2：流推导实际攻隔（BattleRoot.ObserveAttackIntervals 同款拷贝，各文件自持）
+            var attackIntervals = ObserveAttackIntervals(r.Stream);
+
             foreach (SnapshotUnit u in r.Snapshots[0].Units)
                 if (visuals.TryGetValue(u.UnitId, out var v))
+                {
+                    float atkDur = attackIntervals.TryGetValue(u.UnitId, out float iv)
+                        ? Math.Min(v.AttackDuration, iv)
+                        : v.AttackDuration;
                     table.Set(u.UnitId, new UnitTiming
                     {
-                        AttackDuration = v.AttackDuration,
+                        AttackDuration = atkDur,
                         AttackHitPercent = v.AttackHitPercent,
-                        CastDuration = v.AttackDuration,        // 4C 口径：施法复用攻击窗
+                        CastDuration = UnitActorConfig.CastDuration,   // C-1：施法独立短窗
                         CastHitPercent = v.AttackHitPercent,
                         MoveDuration = v.MoveDuration,
                         DeathDuration = v.DeathDuration,
                     });
+                }
             return table;
+        }
+
+        /// <summary>流推导实际攻隔（BattleRoot 同款拷贝，各文件自持）：
+        /// unitId → 全程最小相邻攻击间隔（秒）；攻击不足 2 次的单位不出现。</summary>
+        private static Dictionary<int, float> ObserveAttackIntervals(BattleEventStream stream)
+        {
+            var prevTick = new Dictionary<int, int>();
+            var minGap = new Dictionary<int, float>();
+            for (int i = 0; i < stream.Count; i++)
+            {
+                StreamItem it = stream[i];
+                if (it.Kind != StreamEventKind.UnitAttacked) continue;
+                if (prevTick.TryGetValue(it.IdA, out int prev))
+                {
+                    float gap = (it.Tick - prev) * GameConst.TickSeconds;
+                    if (!minGap.TryGetValue(it.IdA, out float cur) || gap < cur) minGap[it.IdA] = gap;
+                }
+                prevTick[it.IdA] = it.Tick;
+            }
+            return minGap;
         }
 
         /// <summary>备战门禁消费（BattleRoot.ConsumeGates 同款：捡完全部矿+选第一格策略）。</summary>

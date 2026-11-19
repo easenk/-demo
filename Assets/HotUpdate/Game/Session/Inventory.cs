@@ -18,10 +18,17 @@ namespace AutoChess.Game
     ///
     /// 写操作全部 internal：只允许 GameSession（同程序集）经门禁方法驱动——
     /// 测试与表现层只读（Items / EquipmentCount / ConsumableCount / Find），与"写操作经 Session 门禁"的既有纪律一致。
-    /// 背包不设上限（阶段3 简化，#12⑤；UI 需要时再定）。
+    /// 背包容量上限 25（2026-11-19 用户拍板"背包上限定死"——门禁语义见 Capacity 注释）。
     /// </summary>
     public sealed class Inventory
     {
+        /// <summary>背包容量上限（2026-11-19 用户拍板"背包上限定死"=25，与 FGUI 备战界面 eqView 的 25 格对齐）。
+        /// 门禁只拦"新资产入口"：发放经 GameSession.AddEquipment 满包纯拒绝、拆卸回流经 Unequip 满包先拒；
+        /// 卖出返还/合成退料不设门禁——已存在的资产不能凭空消失，满包回流可短暂超 25
+        /// （实战数值不可达：14 回合装备收入约 3~4 件；UI 25 格外的条目不显示）。
+        /// 消耗品（拆卸器等）不占格——它们走 Disassembler 专用按钮位（2026-11-19 拍板），不进 25 格。</summary>
+        public const int Capacity = 25;
+
         private readonly List<EquipmentInstance> _items = new List<EquipmentInstance>();
         private readonly Dictionary<int, int> _consumables = new Dictionary<int, int>();
 

@@ -213,7 +213,8 @@ namespace AutoChess.Presentation
             SetAct(Act.Walk, _walkF, _walkFps, true, t);
         }
 
-        /// <summary>攻击/施法（4C 口径：施法复用攻击窗；施法的区别只在闪色）。</summary>
+        /// <summary>攻击/施法（播放侧帧序列口径：素材无独立施法帧、施法沿用攻击帧序列掐前段即收——
+        /// 4C 原样；时间轴上施法的占位窗长=UnitActorConfig.CastDuration 独立短窗，见 C-1 拍板）。</summary>
         public void PlayAttack(float t, bool faceRight, bool cast)
         {
             if (Dead) return;

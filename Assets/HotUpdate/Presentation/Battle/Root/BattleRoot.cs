@@ -9,7 +9,7 @@ namespace AutoChess.Presentation
 {
     /// <summary>
     /// 战台组合根（#23④，批次B2 立骨架、批次4C 接序列帧真视觉、批次4D 接弹道与技能视觉、
-    /// 批次4E 接排空闸门）：运行时串联 会话 → 视觉撮合 → 预演（后台线程）→ 规划 → 播放 →
+    /// 批次4E 接排空闸门、批次4U0 接 FGUI 底座、批次4U1 接真包面板）：运行时串联 会话 → 视觉撮合 → 预演（后台线程）→ 规划 → 播放 →
     /// 排空闸门 → 结算 全链。
     /// 调试驱动形态：整局会话 = L8 满级 + 注资买满阵容（预演基准同款构建，内容随种子）；
     /// 面板逐场点「开战」——预演后台 Task → await 主线程续接（预演期间主线程不碰会话，
@@ -81,7 +81,17 @@ namespace AutoChess.Presentation
             LoadVisualAssets();          // 30 个烘焙 SO + 立牌材质 + 4D 弹体/特效预制体（缺失=烘焙/搬移没跑，日志点名）
             _view.Bind(_player, _billboardMat, _effectPrefabs);
 
+            // 4U0：FGUI 底座防御性初始化（正常链路 HotUpdateEntry 已 Init；直开 Main 的开发流程也兜住）
+            UiRoot.Init();
+            UiRoot.RefreshCameraStack();   // 直开 Main 的开发流程兜底（正常链路 SceneFlowDriver 已在场景激活时挂过）
+
+            // 4U1：会话先立（真面板经 provider 拿会话——重开一局自动跟随新会话），再登记两个真面板
+            //（备战主面板 PrepHudPanel + 商店弹层 ShopPanel，Package1 真包——UiPackageLoader 生产路径首验在此兑现）
+            // 并开备战主面板；DevStubPanel 已退役删除（UiFoundationTests 用自带探针面板，零引用）。
             NewRun();
+            UiRoot.Panels.Register(new PrepHudPanel(UiRoot.Events, UiRoot.Panels, () => _session, PlayNext));
+            UiRoot.Panels.Register(new ShopPanel(UiRoot.Events, UiRoot.Panels, () => _session));
+            UiRoot.Panels.Open(PanelId.MainHud);
         }
 
         // ─────────────────────── 视觉资产（批次4C：烘焙 SO 预载 + 撮合解析） ───────────────────────
@@ -169,7 +179,9 @@ namespace AutoChess.Presentation
 
         private void NewRun()
         {
-            _session = new GameSession(new EventBus(), _seed, GameTables.Default);
+            var bus = new EventBus();   // 4U0：会话总线留引用——桥挂它（重开一局=新总线重挂）
+            _session = new GameSession(bus, _seed, GameTables.Default);
+            UiRoot.Events.Attach(bus);
             if (!_session.StartRun()) { Log("StartRun 被拒——调试对局建立失败"); return; }
 
             // L8 满级 + 注资 + 优先买技能/远程大户（4D 验收口径：画面要可验收——弹道与技能视觉有得演；
@@ -349,11 +361,16 @@ namespace AutoChess.Presentation
             var fallback = new UnitTiming
             {
                 AttackDuration = 0.45f, AttackHitPercent = 0.5f,
-                CastDuration = 0.60f, CastHitPercent = 0.5f,
+                CastDuration = UnitActorConfig.CastDuration, CastHitPercent = 0.5f,
                 MoveDuration = 0.30f, DeathDuration = 0.40f,
             };
             var table = new PlannerTimingTable(fallback);
             if (result.Snapshots == null || result.Snapshots.Count == 0) return table;
+
+            // C-2（2026-11-18 拍板）：流推导实际攻隔——攻速类加成（羁绊/装备/buff）让运行时
+            // 攻隔短于按基础攻隔截的动画窗，动画比节拍长则每击把 busy 锁存超支（R14 实测
+            // 巨兽每击 0.18s×66 击=12s 漂移）；AttackDuration 取素材窗与观察值中较短者
+            var attackIntervals = ObserveAttackIntervals(result.Stream);
 
             // 真数据逐单位喂（#23⑥ 同一份数据两边各算各的：这里的时长=播放器换帧的同一窗）
             SnapshotUnit[] units = result.Snapshots[0].Units;
@@ -361,17 +378,42 @@ namespace AutoChess.Presentation
             {
                 int id = units[i].UnitId;
                 if (!visuals.TryGetValue(id, out ResolvedUnitVisual v)) continue;
+                float atkDur = attackIntervals.TryGetValue(id, out float iv)
+                    ? Math.Min(v.AttackDuration, iv)
+                    : v.AttackDuration;
                 table.Set(id, new UnitTiming
                 {
-                    AttackDuration = v.AttackDuration,
+                    AttackDuration = atkDur,
                     AttackHitPercent = v.AttackHitPercent,
-                    CastDuration = v.AttackDuration,        // 4C 口径：施法复用攻击窗（素材无独立施法动作）
+                    CastDuration = UnitActorConfig.CastDuration,   // C-1（2026-11-18）：施法独立短窗，不复用攻击窗
                     CastHitPercent = v.AttackHitPercent,
                     MoveDuration = v.MoveDuration,
                     DeathDuration = v.DeathDuration,
                 });
             }
             return table;
+        }
+
+        /// <summary>流推导实际攻隔（C-2）：单遍扫流，返回 unitId → 全程最小相邻攻击间隔（秒）。
+        /// 取最小值的原因：浮点攻击条 tick 化后观察间隔 ≥ 真实攻隔，钳到观察最小值恰好零锁存；
+        /// 攻速 buff 战斗内动态变化时最小值自动覆盖最快节拍。攻击不足 2 次的单位不出现
+        /// （证据不足，钳制不适用，沿用素材窗）；含施法/首击的长间隔自动被最小值忽略。</summary>
+        private static Dictionary<int, float> ObserveAttackIntervals(BattleEventStream stream)
+        {
+            var prevTick = new Dictionary<int, int>();
+            var minGap = new Dictionary<int, float>();
+            for (int i = 0; i < stream.Count; i++)
+            {
+                StreamItem it = stream[i];
+                if (it.Kind != StreamEventKind.UnitAttacked) continue;
+                if (prevTick.TryGetValue(it.IdA, out int prev))
+                {
+                    float gap = (it.Tick - prev) * GameConst.TickSeconds;
+                    if (!minGap.TryGetValue(it.IdA, out float cur) || gap < cur) minGap[it.IdA] = gap;
+                }
+                prevTick[it.IdA] = it.Tick;
+            }
+            return minGap;
         }
 
         // ─────────────────────── 备战收尾（预演基准同款） ───────────────────────
@@ -409,7 +451,7 @@ namespace AutoChess.Presentation
         private void OnGUI()
         {
             var panel = new Rect(12f, 12f, 372f, 366f);
-            GUI.Box(panel, "自走棋 · 战台调试（批次4E）");
+            GUI.Box(panel, "自走棋 · 战台调试（批次4U1）");
 
             float y = panel.y + 26f;
             if (_session == null)

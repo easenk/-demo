@@ -14,8 +14,9 @@ namespace AutoChess.Tests
     ///    （"零等待"按 1e-6 秒容差断言：浮点尾数级偏差视为零，真实等待是毫秒量级、泾渭分明；
     ///    违约时等待沿 busy 账本级联增长、恒不早于逻辑；
     ///  · I1 同单位串行：移动没走完攻击不开拍；死亡可打断自身动作（封口）、死后无动作；
-    ///  · I2 同目标交付序：不同前摇的后手攻击被预扣到先手之后（倒置/打尸体的构造性杜绝），
-    ///    落点仍在自己挥击窗内；Damage/Heal/Mana 全走同一接收者链；数值事件不占动作
+    ///  · I2 同目标交付序：后手攻击的落点被钳到先手之后（倒置/打尸体的构造性杜绝）；
+    ///    出手贴逻辑时刻（2026-11-18 预扣退役）、落点可越出自己挥击窗尾（迟到不倒置）；
+    ///    Damage/Heal/Mana 全走同一接收者链；数值事件不占动作
     ///    （吃延迟闪白的单位开拍不推迟——跨单位零级联）；
     ///  · I3+I4 占位互斥：击杀链倒地起=致死交付、让格=倒地完成、后继者到达≥让格时刻；
     ///    DoT 致死无让格节点（该格永不释放的镜像前提）；
@@ -25,7 +26,7 @@ namespace AutoChess.Tests
     ///  · 矿石：按死亡格链到倒地开始+Gap；无记录（理论不可达）落逻辑时刻；
     ///  · 确定性：同流同表两算（同实例/异实例）逐节点全等；同刻多节点按 Seq 稳定排序；
     ///  · 真战：覆盖场景（PreviewTests 同款，一场打满 11 类事件）全时间轴过六道检查器——
-    ///    不早于逻辑 / I1 串行 / I2 链严格 / 普攻落点=Start+命中偏移且在挥击窗内 /
+    ///    不早于逻辑 / I1 串行 / I2 链严格 / 普攻落点不早于命中帧（链尾可推晚） /
     ///    占位区间逐格互斥（从 tick0 快照播种重建） / 条数=流条数+节点种类全覆盖；
     ///    DoT 真战尸体持格到 Makespan。
     ///
@@ -226,7 +227,9 @@ namespace AutoChess.Tests
         public void Plan_DifferentWindups_NoInversionOnSameTarget()
         {
             // I2 主验算：A 命中帧 90%（前摇长）、B 命中帧 10%（前摇短）——逻辑上 B 后手，
-            // 不设防的世界 B 反而先见血（倒置/打尸体）。规划器预扣后：B 开拍推迟、落点排在 A 后
+            // 不设防的世界 B 反而先见血（倒置/打尸体）。预扣退役（2026-11-18）后：
+            // B 开拍贴逻辑时刻（出手不被目标链拖住——方案A核心行为），
+            // 但 B 的落点仍被钳到 A 的交付之后（序由交付钳制独扛）
             var s = NewStream();
             AddItem(s, StreamEventKind.UnitAttacked, 10, 1, 3);   // A 攻 T
             AddItem(s, StreamEventKind.UnitDamaged, 10, 3, 1, 30, 70);
@@ -241,11 +244,10 @@ namespace AutoChess.Tests
             var d1 = BySeq(tl, 1); var a2 = BySeq(tl, 2); var d2 = BySeq(tl, 3);
             Assert.Greater(d2.Start, d1.Start, "后手 B 的伤害必然排在先手 A 之后——无倒置无打尸体");
             Assert.AreEqual(d1.Start + BattlePlanner.DeliveryGap, d2.Start, 1e-6f, "落点钳在链后第一位");
-            float offsetB = Hit(dur, 0.1f);
-            Assert.AreEqual(d1.Start + BattlePlanner.DeliveryGap - offsetB, a2.Start, 1e-6f,
-                "B 的开拍被预扣=链后第一位减命中偏移（先顿一下再挥）");
-            Assert.GreaterOrEqual(d2.Start, a2.Start, "落点不早于开拍");
-            Assert.LessOrEqual(d2.Start, a2.Start + dur + 1e-6f, "落点仍在 B 自己的挥击窗内");
+            Assert.AreEqual(L(11), a2.Start, 1e-6f,
+                "B 的开拍贴逻辑时刻——预扣退役，出手不被目标链拖住（方案A核心行为锁）");
+            Assert.GreaterOrEqual(d2.Start, a2.Start + Hit(dur, 0.1f) - 1e-6f,
+                "落点不早于自己的命中帧（交付钳制的下限）");
         }
 
         [Test]
@@ -622,7 +624,8 @@ namespace AutoChess.Tests
             }
         }
 
-        /// <summary>普攻配对契约：Seq+1 必为配对伤害（源码序），落点=Start+命中偏移且在挥击窗内。</summary>
+        /// <summary>普攻配对契约：Seq+1 必为配对伤害（源码序）；落点≥Start+命中偏移
+        ///（预扣退役 2026-11-18：围殴扎堆时链尾可把落点推晚——迟到不倒置，序由链保证）。</summary>
         private static void CheckAttackPairing(PlannedTimeline tl, PlannerTimingTable timings)
         {
             var bySeq = new Dictionary<int, PlannedNode>();
@@ -636,8 +639,8 @@ namespace AutoChess.Tests
                     $"普攻 Seq {n.Seq} 的紧邻下一条必须是配对伤害（源码序契约）");
                 UnitTiming t = timings.Get(n.UnitId);
                 float offset = Hit(t.AttackDuration, t.AttackHitPercent);
-                Assert.AreEqual(n.Start + offset, dmg.Start, 1e-6f, $"普攻 Seq {n.Seq} 的落点=Start+命中偏移");
-                Assert.LessOrEqual(dmg.Start, n.Start + n.Duration + 1e-6f, "命中在挥击窗内（预扣构造保证）");
+                Assert.GreaterOrEqual(dmg.Start, n.Start + offset - 1e-6f,
+                    $"普攻 Seq {n.Seq} 的落点不早于命中帧（预扣退役后落点=max(命中帧,链尾)）");
             }
         }
 

@@ -469,6 +469,7 @@ namespace AutoChess.Game
             _bench.Remove(u);
             _playerBoard.Add(u);
             RecalculateBoardEffects();   // 上场：羁绊 + 策略修饰器捆绑重算（新上场者补挂）
+            _bus.Publish(new BenchChangedEvent(_bench.Count));   // 会话级名册事实（4U1）：名册就位后发布，见事件注释
             return true;
         }
 
@@ -492,6 +493,34 @@ namespace AutoChess.Game
             _playerBoard.Remove(u);
             _bench.Add(u);
             RecalculateBoardEffects();   // 下场：羁绊 + 策略修饰器捆绑重算（下场者被摘干净——"只有上战场的棋子才算"）
+            _bus.Publish(new BenchChangedEvent(_bench.Count));   // 会话级名册事实（4U1）：名册就位后发布，见事件注释
+            return true;
+        }
+
+        /// <summary>备战席互拖换位（批次4U1，2026-11-19 用户拍板"交换里面的角色不交换容器"）。
+        /// 拒绝矩阵：非备战期 / 同格 / 源格没人（空卡拖不动）/ 格号越界（源 0~人数、目标 0~8），纯拒绝。
+        /// 双方都有人 = 交换；目标格在名单之外（空卡）= 重排到紧排位（列表无洞，超出尾部自动对齐）。
+        /// 备战席顺序即玩家的排序权：占卜师定向刷取 Bench[0] 费用档、4U2 上场次序都随重排变化。
+        /// 成功必发 BenchChangedEvent（本路径唯一的名册事实——拖拽方据此刷新，纯拒绝静默零广播）。</summary>
+        public bool SwapBenchSlots(int slotA, int slotB)
+        {
+            if (Phase != GamePhase.Prep) return false;
+            if (slotA == slotB) return false;
+            if (slotA < 0 || slotA >= _bench.Count) return false;              // 源必须有人
+            if (slotB < 0 || slotB >= BenchCapacity) return false;             // 目标可以是空位
+
+            Unit u = _bench[slotA];
+            if (slotB < _bench.Count)
+            {
+                _bench[slotA] = _bench[slotB];
+                _bench[slotB] = u;
+            }
+            else
+            {
+                _bench.RemoveAt(slotA);
+                _bench.Insert(Math.Min(slotB, _bench.Count), u);
+            }
+            _bus.Publish(new BenchChangedEvent(_bench.Count));   // 本路径唯一的名册事实（4U1）：拖拽方靠它刷新，无需自带刷新
             return true;
         }
 
@@ -500,13 +529,14 @@ namespace AutoChess.Game
         /// <summary>
         /// 加一件装备进背包（发全局唯一实例号；失败返回 0 哨兵）。
         /// 消费者 = 批次6 的晶矿/策略装备发放（#12⑧ 只给散件——发放侧编表纪律）；测试直接调。
-        /// 拒绝：无装备表（注入包未设）/ 表外 id。
+        /// 拒绝：无装备表（注入包未设）/ 表外 id / 背包满（25 格，2026-11-19 拍板——矿/策略发放侧据此纯拒绝）。
         /// </summary>
         public int AddEquipment(int defId)
         {
             if (_tables.Equipment == null) return 0;          // 无装备表：纯拒绝
             EquipmentDef def = _tables.Equipment.Get(defId);
             if (def.Id == 0) return 0;                         // 表外 id
+            if (_inventory.EquipmentCount >= Inventory.Capacity) return 0;   // 背包满：纯拒绝（矿留场/策略候选不消费）
 
             var item = new EquipmentInstance(_ids.Next(), defId);
             _inventory.Add(item);
@@ -549,7 +579,8 @@ namespace AutoChess.Game
 
         /// <summary>
         /// 卸下：槽内实例回背包，消耗 1 个拆卸器（#12⑦ 消耗品——可换人、不可重铸分支）。
-        /// 拒绝矩阵：非备战期 / 未知单位 / 槽号越界 / 空槽 / 拆卸器不足（检查在消耗之前，纯拒绝四不动）。
+        /// 拒绝矩阵：非备战期 / 未知单位 / 槽号越界 / 空槽 / 背包满（回流无处安放——2026-11-19 拍板 25 格，
+        /// 检查在消耗拆卸器之前）/ 拆卸器不足（检查在消耗之前，纯拒绝四不动）。
         /// </summary>
         public bool Unequip(int unitId, int slotIndex)
         {
@@ -559,6 +590,7 @@ namespace AutoChess.Game
             if (slotIndex < 0 || slotIndex >= Unit.EquipmentSlotCount) return false;
             EquipmentInstance item = u.EquipmentSlotsInternal[slotIndex];
             if (item == null) return false;                                  // 空槽
+            if (_inventory.EquipmentCount >= Inventory.Capacity) return false;   // 背包满：拆卸器不消耗、装备留槽
             if (!_inventory.TryConsume(ConsumableIds.UnsmithTool, 1)) return false;   // 拆卸器不足
 
             u.EquipmentSlotsInternal[slotIndex] = null;
@@ -885,7 +917,7 @@ namespace AutoChess.Game
                 case OreRewardType.Gold: _eco.AddGold(def.Amount); break;
                 case OreRewardType.Xp: _eco.AddXp(def.Amount); break;
                 case OreRewardType.Equipment:
-                    if (AddEquipment(def.EquipmentId) == 0) return false;   // 无装备表/表外 id：纯拒绝，矿留场
+                    if (AddEquipment(def.EquipmentId) == 0) return false;   // 无装备表/表外 id/背包满：纯拒绝，矿留场
                     break;
                 case OreRewardType.UnsmithTool: AddUnsmithTools(def.Amount); break;   // 表校验 Amount>0，必成功
             }
@@ -966,13 +998,16 @@ namespace AutoChess.Game
             PolicyDef def = _tables.Policies.Get(policyId);
             if (def.Id == 0) return false;   // 理论不可达（候选来自全表）——防御性兜底
 
-            // 装备条目预检（批次6）：无装备表 / 表外 id → 纯拒绝——发生在任何状态改变之前
-            // （实例章序号、金币、经验、候选、已选清单都不动；PickPolicy 无随机，重试无损）。
+            // 装备条目预检（批次6；4U1 扩容）：无装备表 / 表外 id / 背包满（25 格，2026-11-19 拍板）→ 纯拒绝——
+            // 发生在任何状态改变之前（实例章序号、金币、经验、候选、已选清单都不动；PickPolicy 无随机，重试无损）。
             for (int e = 0; e < def.Effects.Length; e++)
             {
-                if (def.Effects[e].Type != PolicyEffectType.Equipment) continue;
-                if (_tables.Equipment == null || _tables.Equipment.Get(def.Effects[e].EquipmentId).Id == 0)
-                    return false;
+                PolicyEffect effect = def.Effects[e];
+                if (effect.Type != PolicyEffectType.Equipment && effect.Type != PolicyEffectType.RandomEquipment) continue;
+                if (_inventory.EquipmentCount >= Inventory.Capacity) return false;   // 满包：装备类入包必失败
+                if (_tables.Equipment == null) return false;                        // 无装备表：同上
+                if (effect.Type == PolicyEffectType.RandomEquipment) continue;       // 随机散件池 = 1~3 散件（Default 恒有），无需查 id
+                if (_tables.Equipment.Get(effect.EquipmentId).Id == 0) return false; // 表外 id
             }
 
             int instanceSourceId = ModSourceId.StrategyBase + ++_policyInstanceSeq;   // 一条策略一个章

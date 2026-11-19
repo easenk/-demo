@@ -1341,6 +1341,109 @@ namespace AutoChess.Tests
                 "战斗掷骰不耗会话流——第二次免费上架序列仍逐格一致");
         }
 
+        // ─────────────────────── 背包容量门禁 + 备战席换位（批次4U1，2026-11-19 拍板"背包上限定死 25"） ───────────────────────
+
+        /// <summary>注入包：Tables() 基础上加装备表（容量门禁测试要 AddEquipment/Equip）；角色表可换（换位测试要三个不同角色）。</summary>
+        private static GameTables EquipTables(CharacterTable chars = null)
+            => new GameTables
+            {
+                Characters = chars ?? SingleChar(),
+                Odds = AllCostOne(),
+                Rounds = RoundTable.Default,
+                Enemies = EnemyTable.Empty,
+                Synergies = SynergyTable.Default,
+                Ores = OreTable.Default,
+                Policies = new PolicyTable(new PolicyDef[0]),
+                Equipment = EquipmentTable.Default,
+            };
+
+        /// <summary>三个互不相同的 1 费角色（换位测试用——避开合成；单角色表下凑不齐三张不同卡）。</summary>
+        private static CharacterTable ThreeChars()
+            => new CharacterTable(new[]
+            {
+                Char(1, 500, 100), Char(2, 500, 100), Char(3, 500, 100),
+            });
+
+        [Test]
+        public void Inventory_Capacity25_AddEquipmentAndUnequipRefuseAtFull()
+        {
+            var s = New(new EventBus(), EquipTables());
+            Assert.IsTrue(s.StartRun());
+
+            // 发放入口门禁：恰好 25 件全入包，第 26 件纯拒绝
+            for (int i = 0; i < Inventory.Capacity; i++)
+                Assert.AreNotEqual(0, s.AddEquipment(1), $"第 {i + 1} 件应入包");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount, "恰好 25 件（与 FGUI eqView 25 格对齐）");
+            Assert.AreEqual(0, s.AddEquipment(1), "第 26 件纯拒绝（0 哨兵）");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount, "拒绝后包不动");
+
+            // 拆卸回流门禁：穿戴腾格 → 补满 → 满包卸下被拒、拆卸器不消耗（检查在消耗之前）
+            BuyAny(s);
+            int unitId = s.Bench[0].Id;
+            int instanceId = s.Inventory.Items[0].InstanceId;
+            Assert.IsTrue(s.Equip(unitId, 0, instanceId), "穿戴成功（背包腾出 1 格）");
+            Assert.AreNotEqual(0, s.AddEquipment(1), "补满第 25 件");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount);
+
+            Assert.IsFalse(s.Unequip(unitId, 0), "满包回流：纯拒绝");
+            Assert.AreEqual(Inventory.Capacity, s.Inventory.EquipmentCount, "包不动");
+            Assert.AreEqual(GameSession.StartUnsmithTools, s.UnsmithToolCount, "拆卸器一分不动（纯拒绝四不动）");
+        }
+
+        [Test]
+        public void BenchChangedEvent_FiresAfterRosterSettled_PlacementPathsOnly()
+        {
+            // 4U1 名册事实事件：上场/下场/互拖三条路径在【名册终值后】发布（BoardData 的 Placed/Removed
+            // 在名册中途发布——本事件补齐"事实先于刷新"；买入/卖出/合成不经它，各有自己的终值后事实）
+            var bus = new EventBus();
+            var s = New(bus, EquipTables(ThreeChars()));
+            Assert.IsTrue(s.StartRun());
+            BuyDistinct(s, 2);
+            int a = s.Bench[0].Id, b = s.Bench[1].Id;
+
+            var eventCounts = new List<int>();
+            var liveCounts = new List<int>();   // 事件处理器内现场拉的会话名册（必须已是终值——这就是事件序的断言）
+            bus.Subscribe<BenchChangedEvent>(e => { eventCounts.Add(e.BenchCount); liveCounts.Add(s.Bench.Count); });
+
+            Assert.IsTrue(s.PlaceOnBoard(a, new Pos(3, 2)), "上场成功");
+            Assert.IsFalse(s.PlaceOnBoard(b, new Pos(3, 2)), "占位拒绝（纯拒绝）");
+            Assert.AreEqual(1, eventCounts.Count, "占位拒绝不广播");
+            Assert.IsTrue(s.TakeOffBoard(a), "下场成功");
+            Assert.IsTrue(s.SwapBenchSlots(0, 1), "互拖换位成功");
+
+            Assert.AreEqual(new[] { 1, 2, 2 }, eventCounts.ToArray(), "三条路径各一条，BenchCount=终值");
+            Assert.AreEqual(new[] { 1, 2, 2 }, liveCounts.ToArray(), "事件序锁死：处理器内拉到的名册已是终值（4U1 真台实抓的坑）");
+        }
+
+        [Test]
+        public void SwapBenchSlots_SwapAndReorder_PhaseGated()
+        {
+            var s = New(new EventBus(), EquipTables(ThreeChars()));
+            Assert.IsFalse(s.SwapBenchSlots(0, 1), "PreRun 拒绝（仅备战期）");
+
+            Assert.IsTrue(s.StartRun());
+            BuyDistinct(s, 3);   // 三个互不相同角色（内部注资；同角色三张会触发合成）
+            int a = s.Bench[0].Id, b = s.Bench[1].Id, c = s.Bench[2].Id;
+
+            // 拒绝矩阵
+            Assert.IsFalse(s.SwapBenchSlots(0, 0), "同格拒绝");
+            Assert.IsFalse(s.SwapBenchSlots(3, 4), "源格没人拒绝（Bench 只有 3 人）");
+            Assert.IsFalse(s.SwapBenchSlots(0, GameSession.BenchCapacity), "目标越界拒绝（0~8）");
+            Assert.IsFalse(s.SwapBenchSlots(-1, 0), "源越界拒绝");
+
+            // 交换：双方都有人（"交换里面的角色不交换容器"）
+            Assert.IsTrue(s.SwapBenchSlots(0, 1), "互换成功");
+            Assert.AreEqual(b, s.Bench[0].Id);
+            Assert.AreEqual(a, s.Bench[1].Id);
+            Assert.AreEqual(c, s.Bench[2].Id, "第三方不动");
+
+            // 重排：拖到空卡 = 移到紧排位（列表无洞，尾部自动对齐）
+            Assert.IsTrue(s.SwapBenchSlots(0, 5), "拖到空位成功");
+            Assert.AreEqual(a, s.Bench[0].Id);
+            Assert.AreEqual(c, s.Bench[1].Id);
+            Assert.AreEqual(b, s.Bench[2].Id, "b 从首位移到尾部（空位 5 = 紧排列表尾）");
+        }
+
         // ─────────────────────── GameTables 注入包 ───────────────────────
 
         [Test]

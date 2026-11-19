@@ -364,6 +364,22 @@ namespace AutoChess.Game
         }
     }
 
+    /// <summary>Session 备战席名册变动后广播（批次4U1）：上场（PlaceOnBoard）/ 下场（TakeOffBoard）/
+    /// 互拖换位（SwapBenchSlots）三条路径的会话级名册事实——补齐"事实先于刷新"的缺口：
+    /// 这三条路径此前只能借 BoardData 的 UnitPlaced/UnitRemoved，而那两条在名册变动【中途】发布
+    /// （棋盘占用是 BoardData 的全部事实，此时会话名册还没改完——"拉会话现势"的备战席消费者
+    /// 会读到旧名单，4U1 真台实抓）。买入/卖出/合成各有 UnitAcquired/UnitSold/UnitMerged
+    /// 在名册就位后发布，不经本事件。BenchCount = 广播时刻的备战席人数（终值）。</summary>
+    public struct BenchChangedEvent
+    {
+        public int BenchCount;
+
+        public BenchChangedEvent(int benchCount)
+        {
+            BenchCount = benchCount;
+        }
+    }
+
     /// <summary>EnterPrep 第 0 步广播：回合开始（Phase 已置 Prep）。</summary>
     public struct RoundStartedEvent
     {

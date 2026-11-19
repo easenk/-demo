@@ -73,6 +73,15 @@ namespace AutoChess.Presentation
         /// 低费角色 1.7 米、5费 2.5、Boss 3 米）——真台观感定稿由用户拍板。</summary>
         public const float BaseHeight = 2.0f;
 
+        /// <summary>施法窗时长（秒，规划口径）：2026-11-18 拍板（C-1）——取代 4C"施法复用攻击窗"。
+        /// 素材无独立施法帧、播放侧仍用攻击帧序列（掐前段即收），但时间轴上施法只占本窗长。
+        /// 动机：普攻→施法在逻辑上只隔 1 tick（蓝满打断普攻循环），若施法窗=攻击窗（贴满攻隔），
+        /// 两段动画串行要吃约 2 个攻隔的轴——每次施法把该单位的 busy 永久锁存 1 秒多
+        ///（R14 实测战地法师 10 次施法=14.7s 漂移，读数精确吻合）。短窗把锁存压到窗长量级。
+        /// 已知残余：普攻窗+施法窗仍可超过逻辑给的预算（施法后攻击条重置=再隔一个攻隔），
+        /// 每次施法仍留窗长级锁存——归零需普攻窗为施法让余（C-3 最小形态，另案拍板）。</summary>
+        public const float CastDuration = 0.45f;
+
         private static readonly Dictionary<int, UnitVisualDef> Defs = BuildDefs();
 
         /// <summary>查定义：未知视觉键返回 null（调用方 fail fast，宁可炸不可静默错画）。</summary>

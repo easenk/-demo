@@ -14,8 +14,10 @@ namespace AutoChess.Presentation
     ///    （唯一例外：死亡打断自身动作——倒地起于致死交付，busy 被倒地覆盖=封口）；
     ///  · I2 同目标交付序 → chain 账本：对同一接收者，Damage/Heal/Mana/MaxHp 按流序
     ///    严格递增（最小间隔 DeliveryGap；同目标禁同刻=严格序，跨目标同刻合法=AOE 同帧）；
-    ///    普攻出手再"预扣命中偏移"：Start ≥ chain[目标]+Gap-命中偏移 → 落点构造上
-    ///    排在目标链之后、且必落在自己挥击窗内（不同前摇的倒置/打尸体从构造上杜绝）；
+    ///    普攻出手不做链预扣（2026-11-18 拍板：预扣退役——围殴单目标时它把链滞后回灌
+    ///    给每个攻击者的 busy 滚雪球，高血量目标的死亡真空实测达数十秒）；落点在
+    ///    OnDamaged 钳到链后（不同前摇的倒置/打尸体仍然构造性杜绝），代价=命中可越出
+    ///    自己挥击窗尾（迟到不倒置）；
     ///  · I3+I4 占位互斥按序 → releaseAt 账本：到达任一格 ≥ 该格释放时刻。释放写者三种：
     ///    移动者走完（起点格保守持到补间走完，2026-11-03 拍板）/ 尸体倒地完成
     ///    （Died+Removed 配对落笔——"倒地前格不让位"的机制本身）/ DoT 尸体永不写
@@ -44,7 +46,8 @@ namespace AutoChess.Presentation
     /// 格位信息流条目全有（初始站位逻辑棋盘保证合法、死亡格/走位格/矿格都在条目里），
     /// 快照的主顾是 4B2 播放器，#23③"事件流+快照→规划器"按管线口径理解；
     /// ②攻击预扣与施法钳制的不对称（施法多目标出手时未知，只能交付时钳制——极端级联下
-    /// 落点可晚于施法动画，顺序不破的已记录让步）；③占位时刻=攻 0.45s/命中 50%、
+    /// 落点可晚于施法动画，顺序不破的已记录让步）——其中攻击预扣已于 2026-11-18 退役
+    /// （预扣正反馈滚雪球导致围殴场死亡真空数十秒，见 I2 账本注记）；③占位时刻=攻 0.45s/命中 50%、
     /// 施法 0.60s/50%、移动 0.30s、倒地 0.40s（4C AnimationDef 替换）；④保守占位；
     /// ⑤InternalsVisibleTo("AutoChess.Tests") 供测试直构合成流。
     /// 已知边界（遗留观察）：击杀回复等后果性数值事件按"排水直设"落逻辑时刻，
@@ -113,9 +116,12 @@ namespace AutoChess.Presentation
             _castCtxCaster = 0;   // 新动作事件：施法块终结
             UnitTiming t = timings.Get(it.IdA);
             float hitOffset = t.AttackHitPercent * t.AttackDuration;
+            // 2026-11-18 拍板（方案A）：I2 预扣退役——出手不再被目标链尾拖住。围殴单目标时
+            // 预扣会把链的滞后回灌给每个攻击者的 busy（守约余量被截窗吃光=零衰减），
+            // 正反馈滚雪球实测把高血量目标的死亡真空推到数十秒（R14 Boss 31.8s、R11 20.5s）；
+            // 序改由 OnDamaged 的交付钳制独扛（链递增/不倒置/倒地=链尾全保），
+            // 代价=命中可越出自己挥击窗尾（迟到不倒置）。
             float start = Math.Max(it.Tick * GameConst.TickSeconds, BusyOf(it.IdA));
-            if (_chain.TryGetValue(it.IdB, out float lastToTarget))   // I2 预扣，见类注释
-                start = Math.Max(start, lastToTarget + DeliveryGap - hitOffset);
             _nodes.Add(new PlannedNode
             {
                 Kind = PlannedNodeKind.Attack, UnitId = it.IdA, TargetId = it.IdB,
@@ -134,7 +140,7 @@ namespace AutoChess.Presentation
             UnitTiming t = timings.Get(it.IdA);
             float hitOffset = t.CastHitPercent * t.CastDuration;
             float start = Math.Max(it.Tick * GameConst.TickSeconds, BusyOf(it.IdA));
-            // 施法不做 I2 预扣：多目标名单出手时未知——交付时钳制兜底（OnDamaged）
+            // 施法出手不做链约束：多目标名单出手时未知——交付时钳制兜底（OnDamaged）
             _nodes.Add(new PlannedNode
             {
                 Kind = PlannedNodeKind.Cast, UnitId = it.IdA, TargetId = it.IdC,
@@ -193,7 +199,8 @@ namespace AutoChess.Presentation
             float d;
             if (atkActive && _atkCtxAttacker == it.IdB && _atkCtxTarget == it.IdA)
             {
-                // 普攻配对（紧邻下一条）：落点已预扣过链约束，此处的 max 是防御纵深
+                // 普攻配对（紧邻下一条）：落点=命中帧与目标链尾的 max——预扣退役后这里
+                // 是 I2 链约束的唯一落点（序的构造保证；链扎堆时可晚于挥击窗尾）
                 d = Math.Max(Math.Max(_atkCtxHit, L), NextDelivery(it.IdA));
             }
             else if (_castCtxCaster != 0 && _castCtxCaster == it.IdB)
